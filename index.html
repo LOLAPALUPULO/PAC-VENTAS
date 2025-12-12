@@ -193,15 +193,14 @@
       };
 
       // --- PHYSICS COMPONENT: FloatingGameLogo ---
-      // Fixed: Removed state dependencies from the loop to prevent stuttering.
       const FloatingGameLogo = ({ isActive }) => {
         const logoRef = React.useRef(null);
-        // We use refs for physics state to avoid React render cycle latency
+        // Physics state
         const physicsState = React.useRef({
             x: window.innerWidth / 2 - 32,
             y: 100,
-            vx: 3,
-            vy: 3,
+            vx: 4, // Initial velocity for screensaver mode
+            vy: 4,
             tiltX: 0,
             tiltY: 0
         });
@@ -209,7 +208,6 @@
 
         React.useEffect(() => {
             const handleOrientation = (event) => {
-                // Adjust sensitivity and axis for natural feel
                 physicsState.current.tiltX = (event.gamma || 0) * 0.5; // Left/Right
                 physicsState.current.tiltY = (event.beta || 0) * 0.5;  // Up/Down
             };
@@ -225,26 +223,40 @@
             
             const state = physicsState.current;
             const logoRect = logoRef.current.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
             
             // Physics Constants
-            const friction = 0.95; // Slight air resistance
-            const acceleration = 0.5; // Response to tilt
-            const bounceFactor = 0.7;
+            const friction = 0.95; 
+            const acceleration = 0.5; 
+            const bounceFactor = 0.8;
             const maxSpeed = 20;
+            const minSpeed = 3; // Minimum speed for screensaver mode
 
-            // Apply Accelerometer force
-            if (state.tiltX !== 0 || state.tiltY !== 0) {
+            // Check if tilt is active
+            const hasTilt = Math.abs(state.tiltX) > 0.5 || Math.abs(state.tiltY) > 0.5;
+
+            // Apply Forces
+            if (hasTilt) {
                 state.vx += state.tiltX * acceleration;
                 state.vy += state.tiltY * acceleration;
+                // Apply friction only when controlled, to allow stopping
+                state.vx *= friction;
+                state.vy *= friction;
+            } else {
+                // Screensaver Mode: Maintain speed if no input
+                // No friction applied here so it keeps bouncing forever
+                const currentSpeed = Math.sqrt(state.vx*state.vx + state.vy*state.vy);
+                if (currentSpeed < minSpeed) {
+                    // Boost speed if it got too slow (e.g. after transition from tilt)
+                    state.vx = (state.vx > 0 ? 1 : -1) * minSpeed;
+                    state.vy = (state.vy > 0 ? 1 : -1) * minSpeed;
+                }
             }
 
             // Cap Speed
             state.vx = Math.max(-maxSpeed, Math.min(maxSpeed, state.vx));
             state.vy = Math.max(-maxSpeed, Math.min(maxSpeed, state.vy));
-
-            // Apply Friction
-            state.vx *= friction;
-            state.vy *= friction;
 
             // Predict Next Position
             let nextX = state.x + state.vx;
@@ -254,16 +266,16 @@
             if (nextX <= 0) {
                 nextX = 0;
                 state.vx *= -1;
-            } else if (nextX + logoRect.width >= window.innerWidth) {
-                nextX = window.innerWidth - logoRect.width;
+            } else if (nextX + logoRect.width >= viewportWidth) {
+                nextX = viewportWidth - logoRect.width;
                 state.vx *= -1;
             }
 
             if (nextY <= 0) {
                 nextY = 0;
                 state.vy *= -1;
-            } else if (nextY + logoRect.height >= window.innerHeight) {
-                nextY = window.innerHeight - logoRect.height;
+            } else if (nextY + logoRect.height >= viewportHeight) {
+                nextY = viewportHeight - logoRect.height;
                 state.vy *= -1;
             }
 
@@ -279,7 +291,6 @@
                     nextY < obsRect.bottom &&
                     nextY + logoRect.height > obsRect.top
                 ) {
-                    // Determine collision side (simplified)
                     const logoCenterX = nextX + logoRect.width/2;
                     const logoCenterY = nextY + logoRect.height/2;
                     const obsCenterX = obsRect.left + obsRect.width/2;
@@ -288,7 +299,6 @@
                     const dx = logoCenterX - obsCenterX;
                     const dy = logoCenterY - obsCenterY;
                     
-                    // Normalize distances
                     const combinedHalfWidth = (logoRect.width + obsRect.width) / 2;
                     const combinedHalfHeight = (logoRect.height + obsRect.height) / 2;
                     
@@ -296,20 +306,15 @@
                     const overlapY = combinedHalfHeight - Math.abs(dy);
 
                     if (overlapX < overlapY) {
-                        // Horizontal Collision
                         state.vx *= -bounceFactor;
                         nextX = dx > 0 ? obsRect.right : obsRect.left - logoRect.width;
                     } else {
-                        // Vertical Collision
                         state.vy *= -bounceFactor;
                         nextY = dy > 0 ? obsRect.bottom : obsRect.top - logoRect.height;
                     }
                     
-                    // Trigger sound lightly
-                    if (Math.abs(state.vx) > 5 || Math.abs(state.vy) > 5) {
-                         // Optional: audioService.playTone("C2", "32n"); 
-                         // Commented out to prevent too much noise, uncomment if desired
-                    }
+                    // Collision Sound (optional, muted for sanity)
+                    // if (hasTilt) audioService.playTone("C2", "32n");
                 }
             });
 
@@ -332,7 +337,7 @@
             <img 
                 ref={logoRef}
                 src={LOLA_SVG_URL} 
-                alt="Game Ball" 
+                alt="Lola" 
                 className="game-object w-16 h-16 filter drop-shadow-[0_0_5px_#FFFF00]"
                 style={{ top: 0, left: 0 }} 
             />
@@ -478,7 +483,7 @@
         );
       };
 
-      const SalesTPV = ({ activeFeriaConfig, onLogout }) => {
+      const SalesTPV = ({ activeFeriaConfig, onLogout, isActive }) => {
         const [pintaCount, setPintaCount] = React.useState(0);
         const [litroCount, setLitroCount] = React.useState(0);
         const [isOnline, setIsOnline] = React.useState(navigator.onLine);
@@ -524,11 +529,15 @@
             setPintaCount(0); setLitroCount(0);
         };
 
-        // FIXED LAYOUT: h-[100dvh] ensures it fits on mobile browsers with URL bars. Flexbox structure ensures payment buttons are always visible.
+        // FIXED LAYOUT: h-[100dvh] ensures it fits on mobile browsers with URL bars. 
+        // Flexbox structure uses flex-shrink-0 on header/footer to ensure visibility.
         return (
-            <div className="flex flex-col h-[100dvh] overflow-hidden bg-black p-2 border-4 border-pacBlue rounded-lg m-1 relative z-10 box-border">
+            <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-black p-2 border-4 border-pacBlue rounded-lg m-1 relative z-10 box-border">
+                {/* Floating Game Logo is now INSIDE SalesTPV */}
+                <FloatingGameLogo isActive={isActive} />
+
                 {/* Header: Fixed height, does not shrink */}
-                <div className="flex-none flex justify-between items-center mb-2 border-b-2 border-pacBlue pb-2">
+                <div className="flex-none flex justify-between items-center mb-2 border-b-2 border-pacBlue pb-2 z-10 bg-black">
                     <div>
                         <h1 className="text-pacYellow text-lg md:text-xl">LOLA<span className="text-white text-[10px]">VENTAS</span></h1>
                         <p className="text-pacPink text-[8px] md:text-[10px]">{activeFeriaConfig.nombreFeria}</p>
@@ -542,7 +551,7 @@
                 </div>
 
                 {/* Game Grid: Takes available space, scrollable if necessary but mainly shrinks */}
-                <div className="flex-1 flex gap-2 min-h-0 mb-2 overflow-y-auto">
+                <div className="flex-1 flex gap-2 min-h-0 mb-2 overflow-y-auto z-10">
                     {/* Pinta Column */}
                     <div className="flex-1 flex flex-col gap-2">
                         <div className="flex-grow border-2 border-pacCyan p-1 flex flex-col items-center justify-center relative min-h-[80px]">
@@ -567,13 +576,13 @@
                 </div>
 
                 {/* Score / Total: Fixed height, does not shrink */}
-                <div className="flex-none border-2 border-white p-2 mb-2 text-center bg-gray-900">
+                <div className="flex-none border-2 border-white p-2 mb-2 text-center bg-gray-900 z-10">
                     <p className="text-[8px] md:text-[10px] text-gray-400">SCORE (TOTAL)</p>
                     <p className="text-2xl md:text-4xl text-pacYellow text-shadow-neon">${total}</p>
                 </div>
 
                 {/* Controls: Fixed height (or minimum), does not shrink. Ensures buttons are always visible */}
-                <div className="flex-none grid grid-cols-2 gap-2 h-20 md:h-24 pb-safe">
+                <div className="flex-none grid grid-cols-2 gap-2 h-24 md:h-32 pb-4 z-10">
                     <button 
                         onClick={() => handleSale(TipoPago.Digital)} 
                         disabled={!hasItems}
@@ -721,11 +730,10 @@
 
         return (
             <React.Fragment>
-                <FloatingGameLogo isActive={started} />
                 {!userRole ? <AuthScreen onLogin={setUserRole} /> :
                  userRole === ADMIN_ROLE ? 
                     <AdminDashboard activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} feriaHistory={feriaHistory} onUpdateFeriaConfig={apiService.saveActiveFeriaConfig} onFinalizeFeria={() => apiService.archiveCurrentFeria({config: activeFeriaConfig, sales: activeSales, reportSummary: calculateReportSummary(activeFeriaConfig, activeSales), archivedAt: new Date().toISOString()})} onActivateHistoricalFeria={apiService.activateHistoricalFeria} onDeleteHistoricalFeria={apiService.deleteHistoricalFeria} onLogout={apiService.logout} /> :
-                    <SalesTPV activeFeriaConfig={activeFeriaConfig} onLogout={apiService.logout} />
+                    <SalesTPV activeFeriaConfig={activeFeriaConfig} onLogout={apiService.logout} isActive={started} />
                 }
             </React.Fragment>
         );
