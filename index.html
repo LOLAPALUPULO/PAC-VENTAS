@@ -57,6 +57,7 @@
             color: #fff;
             overflow: hidden; /* Prevent scrolling for game feel */
             font-family: 'Press Start 2P', cursive;
+            touch-action: manipulation; /* Disable double-tap zoom */
         }
 
         /* Scanline CRT Effect */
@@ -98,7 +99,7 @@
         .game-object {
             position: fixed;
             z-index: 50;
-            will-change: transform;
+            will-change: transform, top, left;
             pointer-events: none; /* Let clicks pass through to buttons */
         }
     </style>
@@ -129,7 +130,7 @@
     <div id="root" class="w-full min-h-screen"></div>
     
     <script type="text/babel">
-      // --- Firebase Config (Same as before) ---
+      // --- Firebase Config ---
       const firebaseConfig = {
         apiKey: "AIzaSyDx1qGAu862CxjtbYuj6JAiLX9flvukDw4",
         authDomain: "lolaventasonline.firebaseapp.com",
@@ -165,7 +166,6 @@
           init: async () => {
               if (audioService.initialized) return;
               await Tone.start();
-              // Square wave for 8-bit sound
               audioService.synth = new Tone.PolySynth(Tone.Synth, {
                   oscillator: { type: "square" },
                   envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
@@ -176,7 +176,7 @@
           playTone: (note, duration = "8n") => {
               if (audioService.synth) audioService.synth.triggerAttackRelease(note, duration);
           },
-          playWaka: () => { // Pacman waka waka ish
+          playWaka: () => { 
               if(!audioService.synth) return;
               const now = Tone.now();
               audioService.synth.triggerAttackRelease("B2", "32n", now);
@@ -193,83 +193,93 @@
       };
 
       // --- PHYSICS COMPONENT: FloatingGameLogo ---
-      // Moves logo based on accelerometer and collides with .collidable elements
+      // Fixed: Removed state dependencies from the loop to prevent stuttering.
       const FloatingGameLogo = ({ isActive }) => {
         const logoRef = React.useRef(null);
-        const [pos, setPos] = React.useState({ x: window.innerWidth / 2, y: 100 });
-        const vel = React.useRef({ x: 2, y: 2 }); // Initial velocity
+        // We use refs for physics state to avoid React render cycle latency
+        const physicsState = React.useRef({
+            x: window.innerWidth / 2 - 32,
+            y: 100,
+            vx: 3,
+            vy: 3,
+            tiltX: 0,
+            tiltY: 0
+        });
         const requestRef = React.useRef();
-        const orientationRef = React.useRef({ beta: 0, gamma: 0 }); // Tilt data
 
         React.useEffect(() => {
             const handleOrientation = (event) => {
-                orientationRef.current = { 
-                    beta: event.beta || 0, // X-axis tilt (-180 to 180)
-                    gamma: event.gamma || 0 // Y-axis tilt (-90 to 90)
-                };
+                // Adjust sensitivity and axis for natural feel
+                physicsState.current.tiltX = (event.gamma || 0) * 0.5; // Left/Right
+                physicsState.current.tiltY = (event.beta || 0) * 0.5;  // Up/Down
             };
+            
             if (isActive) {
                 window.addEventListener('deviceorientation', handleOrientation);
             }
             return () => window.removeEventListener('deviceorientation', handleOrientation);
         }, [isActive]);
 
-        const updatePhysics = () => {
+        const updatePhysics = React.useCallback(() => {
             if (!logoRef.current) return;
+            
+            const state = physicsState.current;
             const logoRect = logoRef.current.getBoundingClientRect();
-            const radius = logoRect.width / 2;
             
-            // Physics params
-            const friction = 0.98;
-            const speedMultiplier = 0.2;
-            const bounceFactor = 0.8;
-            const maxSpeed = 15;
+            // Physics Constants
+            const friction = 0.95; // Slight air resistance
+            const acceleration = 0.5; // Response to tilt
+            const bounceFactor = 0.7;
+            const maxSpeed = 20;
 
-            // Update velocity based on tilt (or fallback to bouncing if no tilt)
-            // Gamma (Y-axis tilt) affects X position (left/right)
-            // Beta (X-axis tilt) affects Y position (up/down)
-            if (orientationRef.current.gamma !== 0 || orientationRef.current.beta !== 0) {
-                 vel.current.x += orientationRef.current.gamma * speedMultiplier;
-                 vel.current.y += orientationRef.current.beta * speedMultiplier;
-            } 
-            
-            // Cap speed
-            vel.current.x = Math.max(-maxSpeed, Math.min(maxSpeed, vel.current.x));
-            vel.current.y = Math.max(-maxSpeed, Math.min(maxSpeed, vel.current.y));
+            // Apply Accelerometer force
+            if (state.tiltX !== 0 || state.tiltY !== 0) {
+                state.vx += state.tiltX * acceleration;
+                state.vy += state.tiltY * acceleration;
+            }
+
+            // Cap Speed
+            state.vx = Math.max(-maxSpeed, Math.min(maxSpeed, state.vx));
+            state.vy = Math.max(-maxSpeed, Math.min(maxSpeed, state.vy));
 
             // Apply Friction
-            vel.current.x *= friction;
-            vel.current.y *= friction;
+            state.vx *= friction;
+            state.vy *= friction;
 
-            // Predict next position
-            let nextX = pos.x + vel.current.x;
-            let nextY = pos.y + vel.current.y;
+            // Predict Next Position
+            let nextX = state.x + state.vx;
+            let nextY = state.y + state.vy;
 
             // 1. Screen Boundary Collision
-            if (nextX <= 0 || nextX + logoRect.width >= window.innerWidth) {
-                vel.current.x *= -1;
-                nextX = Math.max(0, Math.min(nextX, window.innerWidth - logoRect.width));
-            }
-            if (nextY <= 0 || nextY + logoRect.height >= window.innerHeight) {
-                vel.current.y *= -1;
-                nextY = Math.max(0, Math.min(nextY, window.innerHeight - logoRect.height));
+            if (nextX <= 0) {
+                nextX = 0;
+                state.vx *= -1;
+            } else if (nextX + logoRect.width >= window.innerWidth) {
+                nextX = window.innerWidth - logoRect.width;
+                state.vx *= -1;
             }
 
-            // 2. Element Collision (Buttons)
-            // Find all elements with class 'collidable'
+            if (nextY <= 0) {
+                nextY = 0;
+                state.vy *= -1;
+            } else if (nextY + logoRect.height >= window.innerHeight) {
+                nextY = window.innerHeight - logoRect.height;
+                state.vy *= -1;
+            }
+
+            // 2. Element Collision
             const obstacles = document.querySelectorAll('.collidable');
             obstacles.forEach(obs => {
                 const obsRect = obs.getBoundingClientRect();
                 
-                // AABB Collision detection
+                // AABB Check
                 if (
                     nextX < obsRect.right &&
                     nextX + logoRect.width > obsRect.left &&
                     nextY < obsRect.bottom &&
                     nextY + logoRect.height > obsRect.top
                 ) {
-                    // Simple bounce logic: determine if hit was horizontal or vertical
-                    // Center points
+                    // Determine collision side (simplified)
                     const logoCenterX = nextX + logoRect.width/2;
                     const logoCenterY = nextY + logoRect.height/2;
                     const obsCenterX = obsRect.left + obsRect.width/2;
@@ -277,37 +287,44 @@
 
                     const dx = logoCenterX - obsCenterX;
                     const dy = logoCenterY - obsCenterY;
-                    const widthSum = (logoRect.width + obsRect.width) / 2;
-                    const heightSum = (logoRect.height + obsRect.height) / 2;
+                    
+                    // Normalize distances
+                    const combinedHalfWidth = (logoRect.width + obsRect.width) / 2;
+                    const combinedHalfHeight = (logoRect.height + obsRect.height) / 2;
+                    
+                    const overlapX = combinedHalfWidth - Math.abs(dx);
+                    const overlapY = combinedHalfHeight - Math.abs(dy);
 
-                    if (Math.abs(dx) * heightSum > widthSum * Math.abs(dy)) {
-                        // Horizontal collision
-                        vel.current.x *= -bounceFactor;
-                        // Push out
+                    if (overlapX < overlapY) {
+                        // Horizontal Collision
+                        state.vx *= -bounceFactor;
                         nextX = dx > 0 ? obsRect.right : obsRect.left - logoRect.width;
                     } else {
-                        // Vertical collision
-                        vel.current.y *= -bounceFactor;
-                        // Push out
+                        // Vertical Collision
+                        state.vy *= -bounceFactor;
                         nextY = dy > 0 ? obsRect.bottom : obsRect.top - logoRect.height;
                     }
                     
-                    // Sound effect on collision
-                    if (Math.abs(vel.current.x) > 1 || Math.abs(vel.current.y) > 1) {
-                         audioService.playTone("C2", "32n");
+                    // Trigger sound lightly
+                    if (Math.abs(state.vx) > 5 || Math.abs(state.vy) > 5) {
+                         // Optional: audioService.playTone("C2", "32n"); 
+                         // Commented out to prevent too much noise, uncomment if desired
                     }
                 }
             });
 
-            // Update State
-            setPos({ x: nextX, y: nextY });
+            // Update State & DOM
+            state.x = nextX;
+            state.y = nextY;
+            logoRef.current.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
+
             requestRef.current = requestAnimationFrame(updatePhysics);
-        };
+        }, []);
 
         React.useEffect(() => {
             if(isActive) requestRef.current = requestAnimationFrame(updatePhysics);
             return () => cancelAnimationFrame(requestRef.current);
-        }, [isActive, pos]); // Depend on pos to trigger re-render loop
+        }, [isActive, updatePhysics]);
 
         if (!isActive) return null;
 
@@ -317,16 +334,12 @@
                 src={LOLA_SVG_URL} 
                 alt="Game Ball" 
                 className="game-object w-16 h-16 filter drop-shadow-[0_0_5px_#FFFF00]"
-                style={{ 
-                    transform: `translate3d(${pos.x}px, ${pos.y}px, 0)`,
-                    left: 0, top: 0 
-                }} 
+                style={{ top: 0, left: 0 }} 
             />
         );
       };
 
-
-      // --- HELPER LOGIC (Same as original) ---
+      // --- HELPER LOGIC ---
       const calculateReportSummary = (feriaConfig, sales) => {
         let totalPintas = 0, totalLitros = 0, montoTotalGeneral = 0, montoTotalDigital = 0, montoTotalBillete = 0;
         sales.forEach((sale) => {
@@ -351,7 +364,7 @@
         logout: async () => { await auth.signOut(); return true; },
         saveActiveFeriaConfig: async (config) => { await db.collection('settings').doc('activeFeria').set(config); return true; },
         addSale: async (sale) => { await db.collection('activeSales').add(sale); return true; },
-        archiveCurrentFeria: async (feriaData) => { /* Same logic as fixed version */ 
+        archiveCurrentFeria: async (feriaData) => { 
             const batch = db.batch();
             const existing = await db.collection('feriaHistory').where('config.nombreFeria', '==', feriaData.config.nombreFeria).limit(1).get();
             let ref = existing.empty ? db.collection('feriaHistory').doc() : existing.docs[0].ref;
@@ -361,7 +374,7 @@
             sales.docs.forEach(d => batch.delete(d.ref));
             await batch.commit(); return true;
         },
-        activateHistoricalFeria: async (feriaToActivate) => { /* The fixed chunk logic */
+        activateHistoricalFeria: async (feriaToActivate) => {
             try {
                 const activeConfigDoc = await db.collection('settings').doc('activeFeria').get();
                 if (activeConfigDoc.exists && activeConfigDoc.data().nombreFeria) {
@@ -404,7 +417,6 @@
 
       // --- COMPONENTS (RETRO STYLE) ---
 
-      // Intro Screen to enable Sensors/Audio
       const InsertCoinScreen = ({ onStart }) => {
           return (
               <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-4 text-center z-50 absolute top-0 left-0 w-full">
@@ -416,7 +428,7 @@
                   >
                     INSERT COIN / START
                   </button>
-                  <p className="mt-8 text-gray-500 text-[10px]">ENABLE ACCELEROMETER FOR LOGO PHYSICS</p>
+                  <p className="mt-8 text-gray-500 text-[10px]">ENABLE SENSORS FOR LOGO PHYSICS</p>
               </div>
           )
       }
@@ -445,7 +457,6 @@
              <div className="border-4 border-pacBlue p-8 rounded-lg shadow-neon-blue bg-black max-w-md w-full relative z-10">
                  <h2 className="text-4xl text-pacYellow text-center mb-2">LOGIN</h2>
                  <div className="h-1 bg-pacBlue w-full mb-8"></div>
-                 
                  <div className="mb-6">
                     <label className="text-pacPink text-xs block mb-2">PLAYER 1 NAME:</label>
                     <input 
@@ -456,21 +467,11 @@
                         autoFocus
                     />
                  </div>
-
                  {error && <p className="text-red-500 text-center text-xs mb-4 animate-blink">{error}</p>}
                  {loading && <p className="text-pacCyan text-center animate-pulse">LOADING...</p>}
-
                  <div className="space-y-4">
-                    {isAdminInput && (
-                        <button onClick={() => doLogin(atob(ENC_ADMIN_EMAIL), atob(ENC_ADMIN_PASS), ADMIN_ROLE)} className="collidable w-full border-2 border-pacRed text-pacRed py-4 hover:bg-pacRed hover:text-black transition-colors">
-                            ADMIN MODE
-                        </button>
-                    )}
-                    {isSalesInput && (
-                        <button onClick={() => doLogin(atob(ENC_SALES_EMAIL), atob(ENC_SALES_PASS), SALES_ROLE)} className="collidable w-full border-2 border-pacCyan text-pacCyan py-4 hover:bg-pacCyan hover:text-black transition-colors">
-                            SALES MODE
-                        </button>
-                    )}
+                    {isAdminInput && <button onClick={() => doLogin(atob(ENC_ADMIN_EMAIL), atob(ENC_ADMIN_PASS), ADMIN_ROLE)} className="collidable w-full border-2 border-pacRed text-pacRed py-4 hover:bg-pacRed hover:text-black transition-colors">ADMIN MODE</button>}
+                    {isSalesInput && <button onClick={() => doLogin(atob(ENC_SALES_EMAIL), atob(ENC_SALES_PASS), SALES_ROLE)} className="collidable w-full border-2 border-pacCyan text-pacCyan py-4 hover:bg-pacCyan hover:text-black transition-colors">SALES MODE</button>}
                  </div>
              </div>
           </div>
@@ -489,7 +490,6 @@
              window.addEventListener('online', () => setIsOnline(true));
              window.addEventListener('offline', () => setIsOnline(false));
              
-             // Auto sync
              if(isOnline && pending.length > 0) {
                  const sync = async () => {
                      const toSync = [...pending];
@@ -513,17 +513,8 @@
 
         const handleSale = (type) => {
             if(!hasItems) return;
-            const sale = {
-                fechaVenta: new Date().toISOString(),
-                tipoUnidad: (pintaCount && litroCount) ? TipoUnidad.Mixed : (pintaCount ? TipoUnidad.Pinta : TipoUnidad.Litro),
-                cantidadUnidades: pintaCount + litroCount,
-                montoTotal: total,
-                tipoPago: type,
-                usuarioVenta: auth.currentUser.email
-            };
-            
+            const sale = { fechaVenta: new Date().toISOString(), tipoUnidad: (pintaCount && litroCount) ? TipoUnidad.Mixed : (pintaCount ? TipoUnidad.Pinta : TipoUnidad.Litro), cantidadUnidades: pintaCount + litroCount, montoTotal: total, tipoPago: type, usuarioVenta: auth.currentUser.email };
             audioService.playEatGhost();
-
             if(isOnline) apiService.addSale(sale);
             else {
                 const newPending = [...pending, {...sale, id: 'temp-'+Date.now()}];
@@ -533,66 +524,67 @@
             setPintaCount(0); setLitroCount(0);
         };
 
+        // FIXED LAYOUT: h-[100dvh] ensures it fits on mobile browsers with URL bars. Flexbox structure ensures payment buttons are always visible.
         return (
-            <div className="flex flex-col h-screen overflow-hidden bg-black p-2 border-4 border-pacBlue rounded-lg m-1 relative z-10">
-                {/* Header */}
-                <div className="flex justify-between items-center mb-4 border-b-2 border-pacBlue pb-2">
+            <div className="flex flex-col h-[100dvh] overflow-hidden bg-black p-2 border-4 border-pacBlue rounded-lg m-1 relative z-10 box-border">
+                {/* Header: Fixed height, does not shrink */}
+                <div className="flex-none flex justify-between items-center mb-2 border-b-2 border-pacBlue pb-2">
                     <div>
-                        <h1 className="text-pacYellow text-xl">LOLA<span className="text-white text-xs">VENTAS</span></h1>
-                        <p className="text-pacPink text-[10px]">{activeFeriaConfig.nombreFeria}</p>
+                        <h1 className="text-pacYellow text-lg md:text-xl">LOLA<span className="text-white text-[10px]">VENTAS</span></h1>
+                        <p className="text-pacPink text-[8px] md:text-[10px]">{activeFeriaConfig.nombreFeria}</p>
                     </div>
                     <div className="text-right">
-                        <div className={`text-[10px] ${isOnline ? 'text-green-400' : 'text-red-500 blink'}`}>
+                        <div className={`text-[8px] md:text-[10px] ${isOnline ? 'text-green-400' : 'text-red-500 blink'}`}>
                             {isOnline ? 'ONLINE' : `OFFLINE (${pending.length})`}
                         </div>
-                        <button onClick={onLogout} className="text-[10px] text-white underline hover:text-pacRed">EXIT</button>
+                        <button onClick={onLogout} className="text-[8px] md:text-[10px] text-white underline hover:text-pacRed">EXIT</button>
                     </div>
                 </div>
 
-                {/* Game Grid */}
-                <div className="flex-grow flex gap-4 mb-4">
+                {/* Game Grid: Takes available space, scrollable if necessary but mainly shrinks */}
+                <div className="flex-1 flex gap-2 min-h-0 mb-2 overflow-y-auto">
                     {/* Pinta Column */}
                     <div className="flex-1 flex flex-col gap-2">
-                        <div className="flex-grow border-2 border-pacCyan p-2 flex flex-col items-center justify-center relative">
-                            <span className="text-pacCyan text-xs absolute top-2">PINTA</span>
-                            <span className="text-white text-[10px] absolute top-6">${activeFeriaConfig.valorPinta}</span>
-                            <span className="text-4xl text-pacYellow mt-4">{pintaCount}</span>
+                        <div className="flex-grow border-2 border-pacCyan p-1 flex flex-col items-center justify-center relative min-h-[80px]">
+                            <span className="text-pacCyan text-[10px] absolute top-1">PINTA</span>
+                            <span className="text-white text-[8px] absolute top-5">${activeFeriaConfig.valorPinta}</span>
+                            <span className="text-3xl md:text-4xl text-pacYellow mt-4">{pintaCount}</span>
                         </div>
-                        <button onClick={() => {setPintaCount(p=>p+1); audioService.playWaka();}} className="collidable bg-pacBlue text-white py-4 text-2xl hover:bg-white hover:text-blue-800 border-2 border-white shadow-neon-blue">+</button>
-                        {pintaCount > 0 && <button onClick={() => setPintaCount(p=>p-1)} className="collidable border-2 border-red-500 text-red-500 py-2 hover:bg-red-900">-</button>}
+                        <button onClick={() => {setPintaCount(p=>p+1); audioService.playWaka();}} className="collidable bg-pacBlue text-white py-3 md:py-4 text-xl md:text-2xl hover:bg-white hover:text-blue-800 border-2 border-white shadow-neon-blue flex-none">+</button>
+                        {pintaCount > 0 && <button onClick={() => setPintaCount(p=>p-1)} className="collidable border-2 border-red-500 text-red-500 py-1 md:py-2 hover:bg-red-900 flex-none">-</button>}
                     </div>
 
                     {/* Litro Column */}
                     <div className="flex-1 flex flex-col gap-2">
-                         <div className="flex-grow border-2 border-pacPink p-2 flex flex-col items-center justify-center relative">
-                            <span className="text-pacPink text-xs absolute top-2">LITRO</span>
-                            <span className="text-white text-[10px] absolute top-6">${activeFeriaConfig.valorLitro}</span>
-                            <span className="text-4xl text-pacYellow mt-4">{litroCount}</span>
+                         <div className="flex-grow border-2 border-pacPink p-1 flex flex-col items-center justify-center relative min-h-[80px]">
+                            <span className="text-pacPink text-[10px] absolute top-1">LITRO</span>
+                            <span className="text-white text-[8px] absolute top-5">${activeFeriaConfig.valorLitro}</span>
+                            <span className="text-3xl md:text-4xl text-pacYellow mt-4">{litroCount}</span>
                         </div>
-                        <button onClick={() => {setLitroCount(p=>p+1); audioService.playWaka();}} className="collidable bg-pacPink text-black py-4 text-2xl hover:bg-white hover:text-pink-800 border-2 border-white shadow-neon-red">+</button>
-                         {litroCount > 0 && <button onClick={() => setLitroCount(p=>p-1)} className="collidable border-2 border-red-500 text-red-500 py-2 hover:bg-red-900">-</button>}
+                        <button onClick={() => {setLitroCount(p=>p+1); audioService.playWaka();}} className="collidable bg-pacPink text-black py-3 md:py-4 text-xl md:text-2xl hover:bg-white hover:text-pink-800 border-2 border-white shadow-neon-red flex-none">+</button>
+                         {litroCount > 0 && <button onClick={() => setLitroCount(p=>p-1)} className="collidable border-2 border-red-500 text-red-500 py-1 md:py-2 hover:bg-red-900 flex-none">-</button>}
                     </div>
                 </div>
 
-                {/* Score / Total */}
-                <div className="border-2 border-white p-2 mb-4 text-center bg-gray-900">
-                    <p className="text-[10px] text-gray-400">SCORE (TOTAL)</p>
-                    <p className="text-4xl text-pacYellow text-shadow-neon">${total}</p>
+                {/* Score / Total: Fixed height, does not shrink */}
+                <div className="flex-none border-2 border-white p-2 mb-2 text-center bg-gray-900">
+                    <p className="text-[8px] md:text-[10px] text-gray-400">SCORE (TOTAL)</p>
+                    <p className="text-2xl md:text-4xl text-pacYellow text-shadow-neon">${total}</p>
                 </div>
 
-                {/* Controls */}
-                <div className="grid grid-cols-2 gap-4 h-24">
+                {/* Controls: Fixed height (or minimum), does not shrink. Ensures buttons are always visible */}
+                <div className="flex-none grid grid-cols-2 gap-2 h-20 md:h-24 pb-safe">
                     <button 
                         onClick={() => handleSale(TipoPago.Digital)} 
                         disabled={!hasItems}
-                        className={`collidable border-2 border-pacCyan text-pacCyan flex flex-col items-center justify-center hover:bg-pacCyan hover:text-black ${!hasItems && 'opacity-30'}`}
+                        className={`collidable border-2 border-pacCyan text-pacCyan flex flex-col items-center justify-center hover:bg-pacCyan hover:text-black ${!hasItems && 'opacity-30'} text-xs md:text-base`}
                     >
                         <span>$ DIGITAL</span>
                     </button>
                     <button 
                         onClick={() => handleSale(TipoPago.Billete)} 
                         disabled={!hasItems}
-                        className={`collidable border-2 border-pacOrange text-pacOrange flex flex-col items-center justify-center hover:bg-pacOrange hover:text-black ${!hasItems && 'opacity-30'}`}
+                        className={`collidable border-2 border-pacOrange text-pacOrange flex flex-col items-center justify-center hover:bg-pacOrange hover:text-black ${!hasItems && 'opacity-30'} text-xs md:text-base`}
                     >
                         <span>$ BILLETE</span>
                     </button>
@@ -617,8 +609,6 @@
                       <h1 className="text-pacRed text-xl">ADMIN MODE</h1>
                       <button onClick={onLogout} className="collidable text-[10px] border border-white px-2 py-1">EXIT</button>
                   </div>
-
-                  {/* Tabs */}
                   <div className="flex gap-2 mb-6">
                       <button onClick={() => setView('config')} className={`collidable flex-1 py-2 text-[10px] border-2 ${view === 'config' ? 'bg-pacRed text-black border-pacRed' : 'border-gray-600 text-gray-600'}`}>CONFIG</button>
                       <button onClick={() => setView('report')} className={`collidable flex-1 py-2 text-[10px] border-2 ${view === 'report' ? 'bg-pacCyan text-black border-pacCyan' : 'border-gray-600 text-gray-600'}`}>REPORT</button>
@@ -688,26 +678,17 @@
         const [feriaHistory, setFeriaHistory] = React.useState([]);
         const [loading, setLoading] = React.useState(true);
 
-        // Request Permissions & Start Audio on first interaction
         const handleStart = async () => {
-             // Init Audio
              await audioService.init();
              audioService.playWaka();
              
-             // Request Accelerometer (iOS 13+)
+             // Request Accelerometer (iOS 13+) - fails gracefully on Android/others
              if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const response = await DeviceOrientationEvent.requestPermission();
-                    if (response === 'granted') {
-                        setStarted(true);
-                    } else {
-                        alert("Permission denied for accelerometer. Game physics will be limited.");
-                        setStarted(true);
-                    }
-                } catch (e) {
-                    console.error(e);
-                    setStarted(true);
-                }
+                    if (response === 'granted') setStarted(true);
+                    else { alert("Physics limited."); setStarted(true); }
+                } catch (e) { console.error(e); setStarted(true); }
              } else {
                  setStarted(true);
              }
