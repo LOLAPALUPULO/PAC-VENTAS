@@ -1,22 +1,163 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FeriaConfig, Sale, TipoPago, TipoUnidad } from '../types';
 import { DIGITAL_PAYMENT_SOUND_BASE64, CASH_PAYMENT_SOUND_BASE64, PINTA_ADD_SOUND_BASE64, PINTA_SUB_SOUND_BASE64, LITRO_ADD_SOUND_BASE64, LITRO_SUB_SOUND_BASE64, UI_CLICK_SOUND_BASE64 } from '../constants';
 import { localStorageService } from '../services/localStorageService';
-import { ADMIN_USER_EMAIL } from '../constants';
 
 interface SalesTPVProps {
     activeFeriaConfig: FeriaConfig | null;
     onAddSale: (sale: Sale) => void;
     onLogout: () => void;
+    isActive?: boolean;
 }
 
-export const SalesTPV: React.FC<SalesTPVProps> = ({ activeFeriaConfig, onAddSale, onLogout }) => {
+const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7284f6b59b63004079/lola.svg';
+
+// --- PHYSICS COMPONENT ---
+const FloatingGameLogo = ({ isActive }: { isActive: boolean }) => {
+    const logoRef = useRef<HTMLImageElement>(null);
+    const physicsState = useRef({
+        x: window.innerWidth / 2 - 32,
+        y: 100,
+        vx: 4,
+        vy: 4,
+        tiltX: 0,
+        tiltY: 0
+    });
+    const requestRef = useRef<number>();
+
+    useEffect(() => {
+        const handleOrientation = (event: DeviceOrientationEvent) => {
+            physicsState.current.tiltX = (event.gamma || 0) * 0.5; 
+            physicsState.current.tiltY = (event.beta || 0) * 0.5; 
+        };
+        
+        if (isActive && window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', handleOrientation);
+        }
+        return () => window.removeEventListener('deviceorientation', handleOrientation);
+    }, [isActive]);
+
+    const updatePhysics = useCallback(() => {
+        if (!logoRef.current) return;
+        
+        const state = physicsState.current;
+        const logoRect = logoRef.current.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        const friction = 0.95; 
+        const acceleration = 0.5; 
+        const bounceFactor = 0.8;
+        const maxSpeed = 20;
+        const minSpeed = 3;
+
+        const hasTilt = Math.abs(state.tiltX) > 0.5 || Math.abs(state.tiltY) > 0.5;
+
+        if (hasTilt) {
+            state.vx += state.tiltX * acceleration;
+            state.vy += state.tiltY * acceleration;
+            state.vx *= friction;
+            state.vy *= friction;
+        } else {
+            // Screensaver Mode
+            const currentSpeed = Math.sqrt(state.vx*state.vx + state.vy*state.vy);
+            if (currentSpeed < minSpeed) {
+                state.vx = (state.vx > 0 ? 1 : -1) * minSpeed;
+                state.vy = (state.vy > 0 ? 1 : -1) * minSpeed;
+            }
+        }
+
+        state.vx = Math.max(-maxSpeed, Math.min(maxSpeed, state.vx));
+        state.vy = Math.max(-maxSpeed, Math.min(maxSpeed, state.vy));
+
+        let nextX = state.x + state.vx;
+        let nextY = state.y + state.vy;
+
+        // Screen Collision
+        if (nextX <= 0) {
+            nextX = 0;
+            state.vx *= -1;
+        } else if (nextX + logoRect.width >= viewportWidth) {
+            nextX = viewportWidth - logoRect.width;
+            state.vx *= -1;
+        }
+
+        if (nextY <= 0) {
+            nextY = 0;
+            state.vy *= -1;
+        } else if (nextY + logoRect.height >= viewportHeight) {
+            nextY = viewportHeight - logoRect.height;
+            state.vy *= -1;
+        }
+
+        // Element Collision (Buttons)
+        const obstacles = document.querySelectorAll('.collidable');
+        obstacles.forEach(obs => {
+            const obsRect = obs.getBoundingClientRect();
+            
+            if (
+                nextX < obsRect.right &&
+                nextX + logoRect.width > obsRect.left &&
+                nextY < obsRect.bottom &&
+                nextY + logoRect.height > obsRect.top
+            ) {
+                const logoCenterX = nextX + logoRect.width/2;
+                const logoCenterY = nextY + logoRect.height/2;
+                const obsCenterX = obsRect.left + obsRect.width/2;
+                const obsCenterY = obsRect.top + obsRect.height/2;
+
+                const dx = logoCenterX - obsCenterX;
+                const dy = logoCenterY - obsCenterY;
+                
+                const combinedHalfWidth = (logoRect.width + obsRect.width) / 2;
+                const combinedHalfHeight = (logoRect.height + obsRect.height) / 2;
+                
+                const overlapX = combinedHalfWidth - Math.abs(dx);
+                const overlapY = combinedHalfHeight - Math.abs(dy);
+
+                if (overlapX < overlapY) {
+                    state.vx *= -bounceFactor;
+                    nextX = dx > 0 ? obsRect.right : obsRect.left - logoRect.width;
+                } else {
+                    state.vy *= -bounceFactor;
+                    nextY = dy > 0 ? obsRect.bottom : obsRect.top - logoRect.height;
+                }
+            }
+        });
+
+        state.x = nextX;
+        state.y = nextY;
+        logoRef.current.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
+
+        requestRef.current = requestAnimationFrame(updatePhysics);
+    }, []);
+
+    useEffect(() => {
+        if(isActive) requestRef.current = requestAnimationFrame(updatePhysics);
+        return () => {
+            if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        };
+    }, [isActive, updatePhysics]);
+
+    if (!isActive) return null;
+
+    return (
+        <img 
+            ref={logoRef}
+            src={LOLA_SVG_URL} 
+            alt="Lola Game Ball" 
+            className="fixed z-50 w-16 h-16 pointer-events-none filter drop-shadow-[0_0_5px_#FFFF00]"
+            style={{ top: 0, left: 0 }} 
+        />
+    );
+};
+
+export const SalesTPV: React.FC<SalesTPVProps> = ({ activeFeriaConfig, onAddSale, onLogout, isActive = true }) => {
     const [pintaCount, setPintaCount] = useState(0);
     const [litroCount, setLitroCount] = useState(0);
     const [activeButton, setActiveButton] = useState<string | null>(null); 
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [pendingOrders, setPendingOrders] = useState<Sale[]>([]);
-    const [showSuccess, setShowSuccess] = useState(false);
 
     const digitalSoundRef = useRef(new Audio(DIGITAL_PAYMENT_SOUND_BASE64));
     const billeteSoundRef = useRef(new Audio(CASH_PAYMENT_SOUND_BASE64));
@@ -24,7 +165,6 @@ export const SalesTPV: React.FC<SalesTPVProps> = ({ activeFeriaConfig, onAddSale
     const pintaSubSoundRef = useRef(new Audio(PINTA_SUB_SOUND_BASE64));
     const litroAddSoundRef = useRef(new Audio(LITRO_ADD_SOUND_BASE64));
     const litroSubSoundRef = useRef(new Audio(LITRO_SUB_SOUND_BASE64));
-    const uiClickSoundRef = useRef(new Audio(UI_CLICK_SOUND_BASE64));
 
     useEffect(() => {
       const storedPending = localStorageService.getPendingOrders();
@@ -40,42 +180,40 @@ export const SalesTPV: React.FC<SalesTPVProps> = ({ activeFeriaConfig, onAddSale
       };
     }, []);
 
+    // Helper to play sound safely
+    const playSound = (audio: HTMLAudioElement) => {
+        audio.currentTime = 0;
+        audio.play().catch(e => console.log("Audio play error", e));
+    };
+
     const total = Math.round((pintaCount * (activeFeriaConfig?.pintaPrice || 0)) + (litroCount * (activeFeriaConfig?.litroPrice || 0)));
+    const hasItems = total > 0;
 
     const handleIncrement = (type: TipoUnidad) => {
         if (type === 'PINTA') {
             setPintaCount(p => p + 1);
-            pintaAddSoundRef.current.currentTime = 0;
-            pintaAddSoundRef.current.play().catch(() => {});
+            playSound(pintaAddSoundRef.current);
         } else {
             setLitroCount(l => l + 1);
-            litroAddSoundRef.current.currentTime = 0;
-            litroAddSoundRef.current.play().catch(() => {});
+            playSound(litroAddSoundRef.current);
         }
     };
 
     const handleDecrement = (type: TipoUnidad) => {
         if (type === 'PINTA' && pintaCount > 0) {
             setPintaCount(p => p - 1);
-            pintaSubSoundRef.current.currentTime = 0;
-            pintaSubSoundRef.current.play().catch(() => {});
+            playSound(pintaSubSoundRef.current);
         } else if (type === 'LITRO' && litroCount > 0) {
             setLitroCount(l => l - 1);
-            litroSubSoundRef.current.currentTime = 0;
-            litroSubSoundRef.current.play().catch(() => {});
+            playSound(litroSubSoundRef.current);
         }
     };
 
     const handlePayment = (method: TipoPago) => {
         if (total === 0) return;
         
-        if (method === 'DIGITAL') {
-             digitalSoundRef.current.currentTime = 0;
-             digitalSoundRef.current.play().catch(() => {});
-        } else {
-             billeteSoundRef.current.currentTime = 0;
-             billeteSoundRef.current.play().catch(() => {});
-        }
+        if (method === 'DIGITAL') playSound(digitalSoundRef.current);
+        else playSound(billeteSoundRef.current);
 
         const newSale: Sale = {
             id: Date.now().toString(),
@@ -86,122 +224,91 @@ export const SalesTPV: React.FC<SalesTPVProps> = ({ activeFeriaConfig, onAddSale
         };
 
         setActiveButton(method);
-        setShowSuccess(true);
         onAddSale(newSale); 
 
         setTimeout(() => {
             setPintaCount(0);
             setLitroCount(0);
             setActiveButton(null);
-            setShowSuccess(false);
-        }, 1500);
+        }, 500);
     };
 
-    if (!activeFeriaConfig) return <div className="flex items-center justify-center h-screen text-gray-500">No hay feria activa</div>;
+    if (!activeFeriaConfig) return <div className="flex items-center justify-center h-screen bg-black text-white font-display">NO GAME DETECTED</div>;
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 overflow-hidden">
+        <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-black p-2 border-4 border-blue-700 rounded-lg box-border relative font-mono text-white">
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+                .font-arcade { font-family: 'Press Start 2P', cursive; }
+                .text-shadow-neon { text-shadow: 0 0 5px #FFFF00; }
+                .shadow-neon-blue { box-shadow: 0 0 10px #2121DE, inset 0 0 10px #2121DE; }
+                .shadow-neon-red { box-shadow: 0 0 10px #FF0000; }
+            `}</style>
+            
+            <FloatingGameLogo isActive={isActive} />
+
             {/* Header */}
-            <div className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm z-10">
-                <div className="flex items-center gap-3">
-                    {/* LOLA ICON - Animated */}
-                    <div className="text-pink-500 transform hover:scale-110 transition-transform duration-300 cursor-pointer">
-                         <svg className="w-10 h-10 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                         </svg>
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">LOLA <span className="text-primary text-sm font-normal">Ventas</span></h1>
-                        <div className={`text-xs font-bold flex items-center gap-1 ${isOnline ? 'text-green-500' : 'text-amber-500'}`}>
-                            <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`}></span>
-                            {isOnline ? 'ONLINE' : 'OFFLINE'}
-                        </div>
-                    </div>
+            <div className="flex-none flex justify-between items-center mb-2 border-b-2 border-blue-700 pb-2 z-10 bg-black">
+                <div className="font-arcade">
+                    <h1 className="text-yellow-400 text-sm md:text-xl">LOLA<span className="text-white text-[10px]">VENTAS</span></h1>
+                    <p className="text-pink-400 text-[8px] md:text-[10px] truncate max-w-[200px]">{activeFeriaConfig.name}</p>
                 </div>
-                <button onClick={onLogout} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                <div className="text-right font-arcade">
+                    <div className={`text-[8px] md:text-[10px] ${isOnline ? 'text-green-400' : 'text-red-500 animate-pulse'}`}>
+                        {isOnline ? 'ONLINE' : `OFFLINE (${pendingOrders.length})`}
+                    </div>
+                    <button onClick={onLogout} className="collidable text-[8px] md:text-[10px] text-white underline hover:text-red-500 mt-1">EXIT</button>
+                </div>
+            </div>
+
+            {/* Game Grid */}
+            <div className="flex-1 flex gap-2 min-h-0 mb-2 overflow-y-auto z-10">
+                {/* Pinta Column */}
+                <div className="flex-1 flex flex-col gap-2">
+                    <div className="flex-grow border-2 border-cyan-400 p-1 flex flex-col items-center justify-center relative min-h-[80px] font-arcade">
+                        <span className="text-cyan-400 text-[10px] absolute top-1">PINTA</span>
+                        <span className="text-white text-[8px] absolute top-5">${activeFeriaConfig.pintaPrice}</span>
+                        <span className="text-2xl md:text-4xl text-yellow-400 mt-4">{pintaCount}</span>
+                    </div>
+                    <button onClick={() => handleIncrement('PINTA')} className="collidable bg-blue-800 text-white py-3 md:py-4 text-xl md:text-2xl hover:bg-white hover:text-blue-800 border-2 border-white shadow-neon-blue flex-none font-arcade">+</button>
+                    {pintaCount > 0 && <button onClick={() => handleDecrement('PINTA')} className="collidable border-2 border-red-500 text-red-500 py-1 md:py-2 hover:bg-red-900 flex-none font-arcade">-</button>}
+                </div>
+
+                {/* Litro Column */}
+                <div className="flex-1 flex flex-col gap-2">
+                        <div className="flex-grow border-2 border-pink-400 p-1 flex flex-col items-center justify-center relative min-h-[80px] font-arcade">
+                        <span className="text-pink-400 text-[10px] absolute top-1">LITRO</span>
+                        <span className="text-white text-[8px] absolute top-5">${activeFeriaConfig.litroPrice}</span>
+                        <span className="text-2xl md:text-4xl text-yellow-400 mt-4">{litroCount}</span>
+                    </div>
+                    <button onClick={() => handleIncrement('LITRO')} className="collidable bg-pink-500 text-black py-3 md:py-4 text-xl md:text-2xl hover:bg-white hover:text-pink-800 border-2 border-white shadow-neon-red flex-none font-arcade">+</button>
+                        {litroCount > 0 && <button onClick={() => handleDecrement('LITRO')} className="collidable border-2 border-red-500 text-red-500 py-1 md:py-2 hover:bg-red-900 flex-none font-arcade">-</button>}
+                </div>
+            </div>
+
+            {/* Score / Total */}
+            <div className="flex-none border-2 border-white p-2 mb-2 text-center bg-gray-900 z-10 font-arcade">
+                <p className="text-[8px] md:text-[10px] text-gray-400">SCORE (TOTAL)</p>
+                <p className="text-2xl md:text-4xl text-yellow-400 text-shadow-neon">${total.toLocaleString()}</p>
+            </div>
+
+            {/* Controls */}
+            <div className="flex-none grid grid-cols-2 gap-2 h-24 md:h-32 pb-4 z-10 font-arcade">
+                <button 
+                    onClick={() => handlePayment('DIGITAL')} 
+                    disabled={!hasItems}
+                    className={`collidable border-2 border-cyan-400 text-cyan-400 flex flex-col items-center justify-center hover:bg-cyan-400 hover:text-black transition-colors ${!hasItems && 'opacity-30'} text-xs md:text-sm`}
+                >
+                    <span>$ DIGITAL</span>
+                </button>
+                <button 
+                    onClick={() => handlePayment('EFECTIVO')} 
+                    disabled={!hasItems}
+                    className={`collidable border-2 border-orange-400 text-orange-400 flex flex-col items-center justify-center hover:bg-orange-400 hover:text-black transition-colors ${!hasItems && 'opacity-30'} text-xs md:text-sm`}
+                >
+                    <span>$ BILLETE</span>
                 </button>
             </div>
-
-            {/* Content */}
-             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4 h-full">
-                     {/* Pinta Card */}
-                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex flex-col justify-between">
-                        <div className="text-center z-10">
-                            <h2 className="text-lg font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pinta</h2>
-                            <div className="text-4xl font-black text-gray-800 dark:text-white mt-2">${Math.round(activeFeriaConfig.pintaPrice)}</div>
-                        </div>
-                        <div className="flex flex-col items-center gap-4 z-10 flex-1 justify-center py-4">
-                            <div className="text-6xl font-bold text-primary">{pintaCount}</div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 z-10">
-                             <button onClick={() => handleDecrement('PINTA')} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-300 rounded-xl p-4 font-bold text-xl transition active:scale-95">-</button>
-                             <button onClick={() => handleIncrement('PINTA')} className="bg-primary/10 hover:bg-primary/20 text-primary rounded-xl p-4 font-bold text-xl transition active:scale-95 border-2 border-primary/20">+</button>
-                        </div>
-                     </div>
-
-                     {/* Litro Card */}
-                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex flex-col justify-between">
-                        <div className="text-center z-10">
-                            <h2 className="text-lg font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Litro</h2>
-                            <div className="text-4xl font-black text-gray-800 dark:text-white mt-2">${Math.round(activeFeriaConfig.litroPrice)}</div>
-                        </div>
-                        <div className="flex flex-col items-center gap-4 z-10 flex-1 justify-center py-4">
-                            <div className="text-6xl font-bold text-secondary">{litroCount}</div>
-                        </div>
-                         <div className="grid grid-cols-2 gap-3 z-10">
-                             <button onClick={() => handleDecrement('LITRO')} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-300 rounded-xl p-4 font-bold text-xl transition active:scale-95">-</button>
-                             <button onClick={() => handleIncrement('LITRO')} className="bg-secondary/10 hover:bg-secondary/20 text-secondary rounded-xl p-4 font-bold text-xl transition active:scale-95 border-2 border-secondary/20">+</button>
-                        </div>
-                     </div>
-                </div>
-            </div>
-
-            {/* Footer Total & Actions */}
-            <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-6 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                <div className="flex justify-between items-end mb-4">
-                    <span className="text-gray-500 font-bold uppercase text-sm">Total a cobrar</span>
-                    <span className="text-5xl font-black text-gray-900 dark:text-white">${total.toLocaleString()}</span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                    <button 
-                        onClick={() => handlePayment('EFECTIVO')}
-                        disabled={total === 0}
-                        className={`
-                            py-4 rounded-xl font-bold text-lg flex flex-col items-center justify-center gap-1 transition-all duration-200
-                            ${activeButton === 'EFECTIVO' ? 'bg-green-500 text-white scale-95' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30'}
-                            ${total === 0 ? 'opacity-50 cursor-not-allowed grayscale' : 'active:scale-95'}
-                        `}
-                    >
-                        <span>EFECTIVO</span>
-                    </button>
-                    <button 
-                         onClick={() => handlePayment('DIGITAL')}
-                         disabled={total === 0}
-                         className={`
-                            py-4 rounded-xl font-bold text-lg flex flex-col items-center justify-center gap-1 transition-all duration-200
-                            ${activeButton === 'DIGITAL' ? 'bg-blue-500 text-white scale-95' : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/30'}
-                            ${total === 0 ? 'opacity-50 cursor-not-allowed grayscale' : 'active:scale-95'}
-                         `}
-                    >
-                         <span>DIGITAL</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Success Overlay */}
-            {showSuccess && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center animate-bounce-in">
-                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                            <svg className="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                        </div>
-                        <h3 className="text-2xl font-bold text-gray-800 dark:text-white">¡Venta Guardada!</h3>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
