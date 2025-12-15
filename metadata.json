@@ -1,5 +1,5 @@
 {
-  "name": "LOLA VENTAS y estilos",
-  "description": "A robust Point of Sale (POS) and administration dashboard for sales management, featuring real-time reporting, offline support, and interactive audio feedback.",
+  "name": "PAC-VENTAS",
+  "description": "A light single-page application for event sales registration, calculating quantities and totals, with admin and sales user roles, active and historical sales reporting, and PDF download capabilities.",
   "requestFramePermissions": []
 }

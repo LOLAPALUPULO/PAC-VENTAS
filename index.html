@@ -3,66 +3,48 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>LOLA VENTAS</title>
+    <title>LOLA VENTAS - ARCADE EDITION</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js CDN for generative audio -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Google Fonts: Press Start 2P for 8-bit style -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    
     <!-- Custom Tailwind configuration -->
     <script>
         tailwind.config = {
-            darkMode: 'media', 
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        primary: '#10B981', // Emerald 500
-                        primaryDark: '#047857', // Emerald 700
-                        secondary: '#F59E0B', // Amber 500
-                        secondaryDark: '#B45309', // Amber 700
-                        accent: '#EF4444', // Red 500
-                        darkbg: '#111827', // Gray 900
-                        surfaceDark: '#1F2937', // Gray 800
-                        lightbg: '#F3F4F6', // Gray 100
-                        textlight: '#F9FAFB', // Gray 50
-                        textdark: '#111827', // Gray 900
+                        pacBlack: '#000000',
+                        pacBlue: '#2121DE', // Maze wall blue
+                        pacYellow: '#FFFF00', // Pacman
+                        pacRed: '#FF0000', // Blinky
+                        pacPink: '#FFB8FF', // Pinky
+                        pacCyan: '#00FFFF', // Inky
+                        pacOrange: '#FFB852', // Clyde
+                        pacWhite: '#DEDEDE',
+                        pacDot: '#ffb8ae',
                     },
                     fontFamily: {
-                        display: ['Pitched Battle', 'sans-serif'],
-                        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                        display: ['"Press Start 2P"', 'cursive'], // Pixel font
+                        sans: ['"Press Start 2P"', 'cursive'],
                     },
                     boxShadow: {
-                        'glow-primary': '0 0 20px rgba(16, 185, 129, 0.4)',
-                        'glow-secondary': '0 0 20px rgba(245, 158, 11, 0.4)',
-                        '3d-primary': '0 6px 0 #047857', // 3D effect border
-                        '3d-primary-active': '0 2px 0 #047857', // Pressed state
-                        '3d-secondary': '0 6px 0 #B45309',
-                        '3d-secondary-active': '0 2px 0 #B45309',
-                        '3d-blue': '0 6px 0 #1D4ED8',
-                        '3d-blue-active': '0 2px 0 #1D4ED8',
-                        '3d-purple': '0 6px 0 #6D28D9',
-                        '3d-purple-active': '0 2px 0 #6D28D9',
+                        'neon-blue': '0 0 10px #2121DE, inset 0 0 10px #2121DE',
+                        'neon-yellow': '0 0 10px #FFFF00',
+                        'neon-red': '0 0 10px #FF0000',
                     },
                     animation: {
-                        'float': 'float 6s ease-in-out infinite',
-                        'bounce-slow': 'bounce 2s infinite',
-                        'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'slide-up': 'slideUp 0.3s ease-out forwards',
-                        'pop-in': 'popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        'blink': 'blink 1s step-end infinite',
+                        'chomp': 'chomp 0.3s linear infinite',
                     },
                     keyframes: {
-                        float: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' },
-                        },
-                        pulseGlow: {
-                            '0%, 100%': { opacity: 1, boxShadow: '0 0 10px rgba(16, 185, 129, 0.5)' },
-                            '50%': { opacity: .8, boxShadow: '0 0 25px rgba(16, 185, 129, 0.8)' },
-                        },
-                        slideUp: {
-                            '0%': { transform: 'translateY(20px)', opacity: 0 },
-                            '100%': { transform: 'translateY(0)', opacity: 1 },
-                        },
-                        popIn: {
-                            '0%': { transform: 'scale(0.8)', opacity: 0 },
-                            '100%': { transform: 'scale(1)', opacity: 1 },
+                        blink: {
+                            '0%, 100%': { opacity: 1 },
+                            '50%': { opacity: 0 },
                         }
                     }
                 }
@@ -70,88 +52,696 @@
         }
     </script>
     <style>
-        /* Embed Pitched Battle font directly from GitHub Raw */
-        @font-face {
-            font-family: 'Pitched Battle';
-            src: url('https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/91161ac6337594fea4276aef60441ad8ba0c8517/Pitched%20Battle.ttf') format('truetype');
-            font-weight: normal;
-            font-style: normal;
-            font-display: swap;
+        body {
+            background-color: #000;
+            color: #fff;
+            overflow: hidden; /* Prevent scrolling for game feel */
+            font-family: 'Press Start 2P', cursive;
+            touch-action: manipulation; /* Disable double-tap zoom */
         }
 
-        /* Basic spinner for loading state */
-        .spinner {
-          border: 4px solid rgba(0, 0, 0, 0.1);
-          border-left-color: #10B981; /* Primary color */
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
+        /* Scanline CRT Effect */
+        .scanlines {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px;
+            z-index: 9999;
+            pointer-events: none;
+            opacity: 0.3;
         }
 
-        @keyframes spin {
-          to { transform: rotate(360deg); }
+        /* Arcade Scrollbar */
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #000; border-left: 2px solid #2121DE; }
+        ::-webkit-scrollbar-thumb { background: #FFFF00; border: 2px solid #000; }
+
+        /* Loader */
+        .pac-loader {
+            width: 0; height: 0;
+            border-right: 30px solid transparent;
+            border-top: 30px solid #FFFF00;
+            border-left: 30px solid #FFFF00;
+            border-bottom: 30px solid #FFFF00;
+            border-top-left-radius: 30px;
+            border-top-right-radius: 30px;
+            border-bottom-left-radius: 30px;
+            border-bottom-right-radius: 30px;
+            animation: chomp 0.3s infinite linear;
+        }
+        @keyframes chomp {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(45deg); }
+            100% { transform: rotate(0deg); }
         }
 
-        /* Glassmorphism utilities */
-        .glass {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-        }
-        .dark .glass {
-            background: rgba(31, 41, 55, 0.7);
-        }
-        
-        /* 3D Button Reset for Active State */
-        .btn-3d:active {
-            transform: translateY(4px);
-            box-shadow: none !important; /* Removes the bottom border shadow to simulate press */
-        }
-        
-        .btn-3d {
-            transition: all 0.1s;
-        }
-
-        /* Scrollbar styling for a cleaner look */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(136, 136, 136, 0.5);
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(85, 85, 85, 0.8);
+        /* Utility for the collision engine */
+        .game-object {
+            position: fixed;
+            z-index: 50;
+            will-change: transform, top, left;
+            pointer-events: none; /* Let clicks pass through to buttons */
         }
     </style>
+    <!-- React & Libraries -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "firebase/": "https://esm.sh/firebase@^12.6.0/",
-    "jspdf": "https://esm.sh/jspdf@^3.0.4",
-    "tone": "https://esm.sh/tone@^15.1.22",
-    "jspdf-autotable": "https://esm.sh/jspdf-autotable@^5.0.2"
+    "react": "https://esm.sh/react@^19.2.1",
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-lightbg dark:bg-darkbg text-textdark dark:text-textlight min-h-screen font-sans overflow-x-hidden selection:bg-primary selection:text-white">
-    <!-- Background Gradient Mesh -->
-    <div class="fixed inset-0 z-[-1] opacity-20 dark:opacity-10 pointer-events-none overflow-hidden">
-        <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary rounded-full blur-[100px] animate-float"></div>
-        <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary rounded-full blur-[100px] animate-float" style="animation-delay: 2s;"></div>
-    </div>
+<body>
+    <div class="scanlines"></div>
+    <div id="root" class="w-full min-h-screen"></div>
+    
+    <script type="text/babel">
+      // --- Firebase Config ---
+      const firebaseConfig = {
+        apiKey: "AIzaSyDx1qGAu862CxjtbYuj6JAiLX9flvukDw4",
+        authDomain: "lolaventasonline.firebaseapp.com",
+        projectId: "lolaventasonline",
+        storageBucket: "lolaventasonline.firebasestorage.app",
+        messagingSenderId: "323355322280",
+        appId: "1:323355322280:web:b9a78336de7da6af519f9d"
+      };
 
-    <div id="root" class="w-full min-h-screen flex flex-col"></div>
-    <script type="module" src="./index.tsx"></script>
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      const auth = firebase.auth();
+      const db = firebase.firestore();
+
+      // --- Constants & Config ---
+      const TipoUnidad = { Pinta: 'Pinta', Litro: 'Litro', Mixed: 'Mixto' };
+      const TipoPago = { Digital: '$ Digital', Billete: '$ Billete' };
+      const ADMIN_ROLE = 'admin';
+      const SALES_ROLE = 'sales';
+      const ENC_ADMIN_EMAIL = 'bG9sYXBhbHVwdWxvQGdtYWlsLmNvbQ==';
+      const ENC_ADMIN_PASS = 'cmVnaXMxMjM=';
+      const ENC_SALES_EMAIL = 'Y2JvbHVkYXNAZ21haWwuY29t';
+      const ENC_SALES_PASS = 'bG9sMTIzNDU=';
+      const ENC_TRIGGER_ADMIN = 'cmVnaXM='; 
+      const ENC_TRIGGER_SALES = 'bG9s';
+      const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7284f6b59b63004079/lola.svg';
+
+      // --- 8-BIT AUDIO SERVICE ---
+      const audioService = {
+          initialized: false,
+          synth: null,
+          init: async () => {
+              if (audioService.initialized) return;
+              await Tone.start();
+              audioService.synth = new Tone.PolySynth(Tone.Synth, {
+                  oscillator: { type: "square" },
+                  envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+              }).toDestination();
+              audioService.synth.volume.value = -10;
+              audioService.initialized = true;
+          },
+          playTone: (note, duration = "8n") => {
+              if (audioService.synth) audioService.synth.triggerAttackRelease(note, duration);
+          },
+          playWaka: () => { 
+              if(!audioService.synth) return;
+              const now = Tone.now();
+              audioService.synth.triggerAttackRelease("B2", "32n", now);
+              audioService.synth.triggerAttackRelease("E3", "32n", now + 0.1);
+          },
+          playEatGhost: () => {
+              if(!audioService.synth) return;
+              audioService.synth.triggerAttackRelease(["C5", "E5", "G5"], "16n");
+          },
+          playCredit: () => {
+              if(!audioService.synth) return;
+              audioService.synth.triggerAttackRelease(["C5", "G5", "C6"], "8n");
+          }
+      };
+
+      // --- PHYSICS COMPONENT: FloatingGameLogo ---
+      const FloatingGameLogo = ({ isActive }) => {
+        const logoRef = React.useRef(null);
+        // Physics state
+        const physicsState = React.useRef({
+            x: window.innerWidth / 2 - 32,
+            y: 100,
+            vx: 4, // Initial velocity for screensaver mode
+            vy: 4,
+            tiltX: 0,
+            tiltY: 0
+        });
+        const requestRef = React.useRef();
+
+        React.useEffect(() => {
+            const handleOrientation = (event) => {
+                physicsState.current.tiltX = (event.gamma || 0) * 0.5; // Left/Right
+                physicsState.current.tiltY = (event.beta || 0) * 0.5;  // Up/Down
+            };
+            
+            if (isActive) {
+                window.addEventListener('deviceorientation', handleOrientation);
+            }
+            return () => window.removeEventListener('deviceorientation', handleOrientation);
+        }, [isActive]);
+
+        const updatePhysics = React.useCallback(() => {
+            if (!logoRef.current) return;
+            
+            const state = physicsState.current;
+            const logoRect = logoRef.current.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Physics Constants
+            const friction = 0.95; 
+            const acceleration = 0.5; 
+            const bounceFactor = 0.8;
+            const maxSpeed = 20;
+            const minSpeed = 3; // Minimum speed for screensaver mode
+
+            // Check if tilt is active
+            const hasTilt = Math.abs(state.tiltX) > 0.5 || Math.abs(state.tiltY) > 0.5;
+
+            // Apply Forces
+            if (hasTilt) {
+                state.vx += state.tiltX * acceleration;
+                state.vy += state.tiltY * acceleration;
+                // Apply friction only when controlled, to allow stopping
+                state.vx *= friction;
+                state.vy *= friction;
+            } else {
+                // Screensaver Mode: Maintain speed if no input
+                // No friction applied here so it keeps bouncing forever
+                const currentSpeed = Math.sqrt(state.vx*state.vx + state.vy*state.vy);
+                if (currentSpeed < minSpeed) {
+                    // Boost speed if it got too slow (e.g. after transition from tilt)
+                    state.vx = (state.vx > 0 ? 1 : -1) * minSpeed;
+                    state.vy = (state.vy > 0 ? 1 : -1) * minSpeed;
+                }
+            }
+
+            // Cap Speed
+            state.vx = Math.max(-maxSpeed, Math.min(maxSpeed, state.vx));
+            state.vy = Math.max(-maxSpeed, Math.min(maxSpeed, state.vy));
+
+            // Predict Next Position
+            let nextX = state.x + state.vx;
+            let nextY = state.y + state.vy;
+
+            // 1. Screen Boundary Collision
+            if (nextX <= 0) {
+                nextX = 0;
+                state.vx *= -1;
+            } else if (nextX + logoRect.width >= viewportWidth) {
+                nextX = viewportWidth - logoRect.width;
+                state.vx *= -1;
+            }
+
+            if (nextY <= 0) {
+                nextY = 0;
+                state.vy *= -1;
+            } else if (nextY + logoRect.height >= viewportHeight) {
+                nextY = viewportHeight - logoRect.height;
+                state.vy *= -1;
+            }
+
+            // 2. Element Collision
+            const obstacles = document.querySelectorAll('.collidable');
+            obstacles.forEach(obs => {
+                const obsRect = obs.getBoundingClientRect();
+                
+                // AABB Check
+                if (
+                    nextX < obsRect.right &&
+                    nextX + logoRect.width > obsRect.left &&
+                    nextY < obsRect.bottom &&
+                    nextY + logoRect.height > obsRect.top
+                ) {
+                    const logoCenterX = nextX + logoRect.width/2;
+                    const logoCenterY = nextY + logoRect.height/2;
+                    const obsCenterX = obsRect.left + obsRect.width/2;
+                    const obsCenterY = obsRect.top + obsRect.height/2;
+
+                    const dx = logoCenterX - obsCenterX;
+                    const dy = logoCenterY - obsCenterY;
+                    
+                    const combinedHalfWidth = (logoRect.width + obsRect.width) / 2;
+                    const combinedHalfHeight = (logoRect.height + obsRect.height) / 2;
+                    
+                    const overlapX = combinedHalfWidth - Math.abs(dx);
+                    const overlapY = combinedHalfHeight - Math.abs(dy);
+
+                    if (overlapX < overlapY) {
+                        state.vx *= -bounceFactor;
+                        nextX = dx > 0 ? obsRect.right : obsRect.left - logoRect.width;
+                    } else {
+                        state.vy *= -bounceFactor;
+                        nextY = dy > 0 ? obsRect.bottom : obsRect.top - logoRect.height;
+                    }
+                    
+                    // Collision Sound (optional, muted for sanity)
+                    // if (hasTilt) audioService.playTone("C2", "32n");
+                }
+            });
+
+            // Update State & DOM
+            state.x = nextX;
+            state.y = nextY;
+            logoRef.current.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
+
+            requestRef.current = requestAnimationFrame(updatePhysics);
+        }, []);
+
+        React.useEffect(() => {
+            if(isActive) requestRef.current = requestAnimationFrame(updatePhysics);
+            return () => cancelAnimationFrame(requestRef.current);
+        }, [isActive, updatePhysics]);
+
+        if (!isActive) return null;
+
+        return (
+            <img 
+                ref={logoRef}
+                src={LOLA_SVG_URL} 
+                alt="Lola" 
+                className="game-object w-16 h-16 filter drop-shadow-[0_0_5px_#FFFF00]"
+                style={{ top: 0, left: 0 }} 
+            />
+        );
+      };
+
+      // --- HELPER LOGIC ---
+      const calculateReportSummary = (feriaConfig, sales) => {
+        let totalPintas = 0, totalLitros = 0, montoTotalGeneral = 0, montoTotalDigital = 0, montoTotalBillete = 0;
+        sales.forEach((sale) => {
+          montoTotalGeneral += sale.montoTotal;
+          if (sale.tipoPago === TipoPago.Digital) montoTotalDigital += sale.montoTotal;
+          else montoTotalBillete += sale.montoTotal;
+          if (sale.tipoUnidad === TipoUnidad.Pinta) totalPintas += sale.cantidadUnidades;
+          else if (sale.tipoUnidad === TipoUnidad.Litro) totalLitros += sale.cantidadUnidades;
+          else if (sale.tipoUnidad === TipoUnidad.Mixed) { totalPintas += sale.cantidadUnidades / 2; totalLitros += sale.cantidadUnidades / 2; }
+        });
+        return { totalPintas: Math.round(totalPintas), totalLitros: Math.round(totalLitros), montoTotalGeneral: Math.round(montoTotalGeneral), montoTotalDigital: Math.round(montoTotalDigital), montoTotalBillete: Math.round(montoTotalBillete) };
+      };
+
+      const apiService = {
+        login: async (email, password) => {
+          try {
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            const idTokenResult = await userCredential.user.getIdTokenResult(true);
+            return { success: true, role: idTokenResult.claims.role || null, username: email };
+          } catch (error) { throw new Error('GAME OVER: Credenciales inválidas'); }
+        },
+        logout: async () => { await auth.signOut(); return true; },
+        saveActiveFeriaConfig: async (config) => { await db.collection('settings').doc('activeFeria').set(config); return true; },
+        addSale: async (sale) => { await db.collection('activeSales').add(sale); return true; },
+        archiveCurrentFeria: async (feriaData) => { 
+            const batch = db.batch();
+            const existing = await db.collection('feriaHistory').where('config.nombreFeria', '==', feriaData.config.nombreFeria).limit(1).get();
+            let ref = existing.empty ? db.collection('feriaHistory').doc() : existing.docs[0].ref;
+            batch.set(ref, feriaData);
+            batch.update(db.collection('settings').doc('activeFeria'), { nombreFeria: firebase.firestore.FieldValue.delete() });
+            const sales = await db.collection('activeSales').get();
+            sales.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit(); return true;
+        },
+        activateHistoricalFeria: async (feriaToActivate) => {
+            try {
+                const activeConfigDoc = await db.collection('settings').doc('activeFeria').get();
+                if (activeConfigDoc.exists && activeConfigDoc.data().nombreFeria) {
+                    const currentConfig = activeConfigDoc.data();
+                    const currentSalesSnap = await db.collection('activeSales').get();
+                    const currentSales = currentSalesSnap.docs.map(d => ({id: d.id, ...d.data()}));
+                    const report = calculateReportSummary(currentConfig, currentSales);
+                    const existing = await db.collection('feriaHistory').where('config.nombreFeria', '==', currentConfig.nombreFeria).limit(1).get();
+                    let ref = existing.empty ? db.collection('feriaHistory').doc() : existing.docs[0].ref;
+                    await ref.set({ config: currentConfig, sales: currentSales, reportSummary: report, archivedAt: new Date().toISOString() });
+                    const deleteDocs = currentSalesSnap.docs;
+                    for (let i = 0; i < deleteDocs.length; i += 500) {
+                        const batch = db.batch();
+                        deleteDocs.slice(i, i + 500).forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                } else {
+                     const orphan = await db.collection('activeSales').get();
+                     for (let i = 0; i < orphan.docs.length; i += 500) {
+                        const batch = db.batch();
+                        orphan.docs.slice(i, i + 500).forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                }
+                await db.collection('settings').doc('activeFeria').set(feriaToActivate.config);
+                const restore = feriaToActivate.sales || [];
+                for (let i = 0; i < restore.length; i += 500) {
+                    const batch = db.batch();
+                    restore.slice(i, i + 500).forEach(sale => {
+                        const { id, ...data } = sale;
+                        batch.set(db.collection('activeSales').doc(), data);
+                    });
+                    await batch.commit();
+                }
+                return true;
+            } catch (e) { alert(e.message); throw e; }
+        },
+        deleteHistoricalFeria: async (id) => { await db.collection('feriaHistory').doc(id).delete(); return true; }
+      };
+
+      // --- COMPONENTS (RETRO STYLE) ---
+
+      const InsertCoinScreen = ({ onStart }) => {
+          return (
+              <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-4 text-center z-50 absolute top-0 left-0 w-full">
+                  <h1 className="text-6xl text-pacYellow mb-4 animate-pulse" style={{textShadow: '4px 4px #2121DE'}}>LOLA<br/>VENTAS</h1>
+                  <p className="text-pacCyan mb-8 text-xs">ARCADE EDITION 1.0</p>
+                  <button 
+                    onClick={onStart} 
+                    className="border-4 border-pacRed text-pacRed px-8 py-4 text-2xl hover:bg-pacRed hover:text-black transition-colors animate-blink"
+                  >
+                    INSERT COIN / START
+                  </button>
+                  <p className="mt-8 text-gray-500 text-[10px]">ENABLE SENSORS FOR LOGO PHYSICS</p>
+              </div>
+          )
+      }
+
+      const AuthScreen = ({ onLogin }) => {
+        const [usernameInput, setUsernameInput] = React.useState('');
+        const [loading, setLoading] = React.useState(false);
+        const [error, setError] = React.useState(null);
+
+        const normalizedInput = usernameInput.trim().toLowerCase();
+        const isAdminInput = normalizedInput === atob(ENC_TRIGGER_ADMIN);
+        const isSalesInput = normalizedInput === atob(ENC_TRIGGER_SALES);
+
+        const doLogin = async (email, password, role) => {
+            audioService.playCredit();
+            setLoading(true);
+            try {
+                const res = await apiService.login(email, password);
+                if(res.success && res.role === role) onLogin(res.role, res.username);
+            } catch(e) { setError(e.message); audioService.playTone("A2", "4n"); }
+            setLoading(false);
+        };
+
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-4 relative">
+             <div className="border-4 border-pacBlue p-8 rounded-lg shadow-neon-blue bg-black max-w-md w-full relative z-10">
+                 <h2 className="text-4xl text-pacYellow text-center mb-2">LOGIN</h2>
+                 <div className="h-1 bg-pacBlue w-full mb-8"></div>
+                 <div className="mb-6">
+                    <label className="text-pacPink text-xs block mb-2">PLAYER 1 NAME:</label>
+                    <input 
+                        type="text" 
+                        value={usernameInput}
+                        onChange={(e) => {setUsernameInput(e.target.value); audioService.playWaka();}}
+                        className="w-full bg-black border-2 border-white text-white p-4 text-center text-xl outline-none focus:border-pacYellow"
+                        autoFocus
+                    />
+                 </div>
+                 {error && <p className="text-red-500 text-center text-xs mb-4 animate-blink">{error}</p>}
+                 {loading && <p className="text-pacCyan text-center animate-pulse">LOADING...</p>}
+                 <div className="space-y-4">
+                    {isAdminInput && <button onClick={() => doLogin(atob(ENC_ADMIN_EMAIL), atob(ENC_ADMIN_PASS), ADMIN_ROLE)} className="collidable w-full border-2 border-pacRed text-pacRed py-4 hover:bg-pacRed hover:text-black transition-colors">ADMIN MODE</button>}
+                    {isSalesInput && <button onClick={() => doLogin(atob(ENC_SALES_EMAIL), atob(ENC_SALES_PASS), SALES_ROLE)} className="collidable w-full border-2 border-pacCyan text-pacCyan py-4 hover:bg-pacCyan hover:text-black transition-colors">SALES MODE</button>}
+                 </div>
+             </div>
+          </div>
+        );
+      };
+
+      const SalesTPV = ({ activeFeriaConfig, onLogout, isActive }) => {
+        const [pintaCount, setPintaCount] = React.useState(0);
+        const [litroCount, setLitroCount] = React.useState(0);
+        const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+        const [pending, setPending] = React.useState([]);
+
+        React.useEffect(() => {
+             const stored = localStorage.getItem('pendingOrders');
+             if(stored) setPending(JSON.parse(stored));
+             window.addEventListener('online', () => setIsOnline(true));
+             window.addEventListener('offline', () => setIsOnline(false));
+             
+             if(isOnline && pending.length > 0) {
+                 const sync = async () => {
+                     const toSync = [...pending];
+                     setPending([]); localStorage.removeItem('pendingOrders');
+                     toSync.forEach(s => apiService.addSale(s));
+                 }
+                 sync();
+             }
+        }, [isOnline, pending]);
+
+        if (!activeFeriaConfig) return (
+            <div className="h-screen flex flex-col items-center justify-center text-center">
+                <h1 className="text-4xl text-gray-500 mb-4">GAME OVER</h1>
+                <p className="text-xs mb-8">NO ACTIVE FERIA</p>
+                <button onClick={onLogout} className="collidable border-2 border-white px-6 py-2">EXIT</button>
+            </div>
+        );
+
+        const total = Math.round(pintaCount * activeFeriaConfig.valorPinta + litroCount * activeFeriaConfig.valorLitro);
+        const hasItems = total > 0;
+
+        const handleSale = (type) => {
+            if(!hasItems) return;
+            const sale = { fechaVenta: new Date().toISOString(), tipoUnidad: (pintaCount && litroCount) ? TipoUnidad.Mixed : (pintaCount ? TipoUnidad.Pinta : TipoUnidad.Litro), cantidadUnidades: pintaCount + litroCount, montoTotal: total, tipoPago: type, usuarioVenta: auth.currentUser.email };
+            audioService.playEatGhost();
+            if(isOnline) apiService.addSale(sale);
+            else {
+                const newPending = [...pending, {...sale, id: 'temp-'+Date.now()}];
+                setPending(newPending);
+                localStorage.setItem('pendingOrders', JSON.stringify(newPending));
+            }
+            setPintaCount(0); setLitroCount(0);
+        };
+
+        // FIXED LAYOUT: h-[100dvh] ensures it fits on mobile browsers with URL bars. 
+        // Flexbox structure uses flex-shrink-0 on header/footer to ensure visibility.
+        return (
+            <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-black p-2 border-4 border-pacBlue rounded-lg m-1 relative z-10 box-border">
+                {/* Floating Game Logo is now INSIDE SalesTPV */}
+                <FloatingGameLogo isActive={isActive} />
+
+                {/* Header: Fixed height, does not shrink */}
+                <div className="flex-none flex justify-between items-center mb-2 border-b-2 border-pacBlue pb-2 z-10 bg-black">
+                    <div>
+                        <h1 className="text-pacYellow text-lg md:text-xl">LOLA<span className="text-white text-[10px]">VENTAS</span></h1>
+                        <p className="text-pacPink text-[8px] md:text-[10px]">{activeFeriaConfig.nombreFeria}</p>
+                    </div>
+                    <div className="text-right">
+                        <div className={`text-[8px] md:text-[10px] ${isOnline ? 'text-green-400' : 'text-red-500 blink'}`}>
+                            {isOnline ? 'ONLINE' : `OFFLINE (${pending.length})`}
+                        </div>
+                        <button onClick={onLogout} className="text-[8px] md:text-[10px] text-white underline hover:text-pacRed">EXIT</button>
+                    </div>
+                </div>
+
+                {/* Game Grid: Takes available space, scrollable if necessary but mainly shrinks */}
+                <div className="flex-1 flex gap-2 min-h-0 mb-2 overflow-y-auto z-10">
+                    {/* Pinta Column */}
+                    <div className="flex-1 flex flex-col gap-2">
+                        <div className="flex-grow border-2 border-pacCyan p-1 flex flex-col items-center justify-center relative min-h-[80px]">
+                            <span className="text-pacCyan text-[10px] absolute top-1">PINTA</span>
+                            <span className="text-white text-[8px] absolute top-5">${activeFeriaConfig.valorPinta}</span>
+                            <span className="text-3xl md:text-4xl text-pacYellow mt-4">{pintaCount}</span>
+                        </div>
+                        <button onClick={() => {setPintaCount(p=>p+1); audioService.playWaka();}} className="collidable bg-pacBlue text-white py-3 md:py-4 text-xl md:text-2xl hover:bg-white hover:text-blue-800 border-2 border-white shadow-neon-blue flex-none">+</button>
+                        {pintaCount > 0 && <button onClick={() => setPintaCount(p=>p-1)} className="collidable border-2 border-red-500 text-red-500 py-1 md:py-2 hover:bg-red-900 flex-none">-</button>}
+                    </div>
+
+                    {/* Litro Column */}
+                    <div className="flex-1 flex flex-col gap-2">
+                         <div className="flex-grow border-2 border-pacPink p-1 flex flex-col items-center justify-center relative min-h-[80px]">
+                            <span className="text-pacPink text-[10px] absolute top-1">LITRO</span>
+                            <span className="text-white text-[8px] absolute top-5">${activeFeriaConfig.valorLitro}</span>
+                            <span className="text-3xl md:text-4xl text-pacYellow mt-4">{litroCount}</span>
+                        </div>
+                        <button onClick={() => {setLitroCount(p=>p+1); audioService.playWaka();}} className="collidable bg-pacPink text-black py-3 md:py-4 text-xl md:text-2xl hover:bg-white hover:text-pink-800 border-2 border-white shadow-neon-red flex-none">+</button>
+                         {litroCount > 0 && <button onClick={() => setLitroCount(p=>p-1)} className="collidable border-2 border-red-500 text-red-500 py-1 md:py-2 hover:bg-red-900 flex-none">-</button>}
+                    </div>
+                </div>
+
+                {/* Score / Total: Fixed height, does not shrink */}
+                <div className="flex-none border-2 border-white p-2 mb-2 text-center bg-gray-900 z-10">
+                    <p className="text-[8px] md:text-[10px] text-gray-400">SCORE (TOTAL)</p>
+                    <p className="text-2xl md:text-4xl text-pacYellow text-shadow-neon">${total}</p>
+                </div>
+
+                {/* Controls: Fixed height (or minimum), does not shrink. Ensures buttons are always visible */}
+                <div className="flex-none grid grid-cols-2 gap-2 h-24 md:h-32 pb-4 z-10">
+                    <button 
+                        onClick={() => handleSale(TipoPago.Digital)} 
+                        disabled={!hasItems}
+                        className={`collidable border-2 border-pacCyan text-pacCyan flex flex-col items-center justify-center hover:bg-pacCyan hover:text-black ${!hasItems && 'opacity-30'} text-xs md:text-base`}
+                    >
+                        <span>$ DIGITAL</span>
+                    </button>
+                    <button 
+                        onClick={() => handleSale(TipoPago.Billete)} 
+                        disabled={!hasItems}
+                        className={`collidable border-2 border-pacOrange text-pacOrange flex flex-col items-center justify-center hover:bg-pacOrange hover:text-black ${!hasItems && 'opacity-30'} text-xs md:text-base`}
+                    >
+                        <span>$ BILLETE</span>
+                    </button>
+                </div>
+            </div>
+        );
+      };
+
+      const AdminDashboard = ({ activeFeriaConfig, activeSales, feriaHistory, onUpdateFeriaConfig, onFinalizeFeria, onActivateHistoricalFeria, onDeleteHistoricalFeria, onLogout }) => {
+          const [view, setView] = React.useState(activeFeriaConfig ? 'report' : 'config');
+          const [formData, setFormData] = React.useState({ nombreFeria: '', fechaInicio: '', fechaFin: '', valorPinta: 0, valorLitro: 0 });
+
+          React.useEffect(() => {
+              if (activeFeriaConfig) setFormData(activeFeriaConfig);
+          }, [activeFeriaConfig]);
+
+          const report = activeFeriaConfig ? calculateReportSummary(activeFeriaConfig, activeSales) : null;
+
+          return (
+              <div className="min-h-screen bg-black text-white p-2 border-x-4 border-pacRed overflow-y-auto relative z-10">
+                  <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-2">
+                      <h1 className="text-pacRed text-xl">ADMIN MODE</h1>
+                      <button onClick={onLogout} className="collidable text-[10px] border border-white px-2 py-1">EXIT</button>
+                  </div>
+                  <div className="flex gap-2 mb-6">
+                      <button onClick={() => setView('config')} className={`collidable flex-1 py-2 text-[10px] border-2 ${view === 'config' ? 'bg-pacRed text-black border-pacRed' : 'border-gray-600 text-gray-600'}`}>CONFIG</button>
+                      <button onClick={() => setView('report')} className={`collidable flex-1 py-2 text-[10px] border-2 ${view === 'report' ? 'bg-pacCyan text-black border-pacCyan' : 'border-gray-600 text-gray-600'}`}>REPORT</button>
+                      <button onClick={() => setView('history')} className={`collidable flex-1 py-2 text-[10px] border-2 ${view === 'history' ? 'bg-pacOrange text-black border-pacOrange' : 'border-gray-600 text-gray-600'}`}>HISTORY</button>
+                  </div>
+
+                  {view === 'config' && (
+                      <form onSubmit={(e) => {e.preventDefault(); onUpdateFeriaConfig(formData);}} className="space-y-4 border-2 border-white p-4">
+                          <h3 className="text-pacYellow text-sm">LEVEL SETTINGS</h3>
+                          <div><label className="text-[10px] block text-pacBlue">Nombre del Evento</label><input className="w-full bg-gray-900 border border-pacBlue p-2 text-white" value={formData.nombreFeria} onChange={e=>setFormData({...formData, nombreFeria:e.target.value})} /></div>
+                          <div className="flex gap-2">
+                             <div className="flex-1"><label className="text-[10px] block text-pacBlue">Valor Pinta</label><input type="number" className="w-full bg-gray-900 border border-pacBlue p-2 text-white" value={formData.valorPinta} onChange={e=>setFormData({...formData, valorPinta:Number(e.target.value)})} /></div>
+                             <div className="flex-1"><label className="text-[10px] block text-pacBlue">Valor Litro</label><input type="number" className="w-full bg-gray-900 border border-pacBlue p-2 text-white" value={formData.valorLitro} onChange={e=>setFormData({...formData, valorLitro:Number(e.target.value)})} /></div>
+                          </div>
+                          <button className="collidable w-full bg-pacBlue text-white py-2 hover:bg-white hover:text-blue-900">SAVE LEVEL</button>
+                          {activeFeriaConfig && <button type="button" onClick={onFinalizeFeria} className="collidable w-full border-2 border-red-500 text-red-500 py-2 hover:bg-red-900">ARCHIVE LEVEL</button>}
+                      </form>
+                  )}
+
+                  {view === 'report' && report && (
+                      <div className="border-2 border-pacCyan p-4 space-y-4">
+                          <h3 className="text-pacCyan text-center text-sm">{activeFeriaConfig.nombreFeria}</h3>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-gray-900 p-2 text-center border border-pacYellow">
+                                  <p className="text-[8px] text-gray-400">TOTAL</p>
+                                  <p className="text-xl text-pacYellow">${report.montoTotalGeneral}</p>
+                              </div>
+                              <div className="bg-gray-900 p-2 text-center border border-white">
+                                  <p className="text-[8px] text-gray-400">VOL</p>
+                                  <p className="text-xs">{report.totalPintas}P / {report.totalLitros}L</p>
+                              </div>
+                          </div>
+                          <div className="text-[10px] space-y-2">
+                              <div className="flex justify-between text-pacCyan"><span>DIGITAL</span><span>${report.montoTotalDigital}</span></div>
+                              <div className="flex justify-between text-pacOrange"><span>BILLETE</span><span>${report.montoTotalBillete}</span></div>
+                          </div>
+                          <button onClick={onFinalizeFeria} className="collidable w-full border border-gray-500 py-2 text-[10px] hover:bg-white hover:text-black">CLOSE LEVEL</button>
+                      </div>
+                  )}
+
+                  {view === 'history' && (
+                      <div className="space-y-4">
+                          {feriaHistory.map(f => (
+                              <div key={f.id} className="border border-gray-600 p-2 flex justify-between items-center hover:border-pacYellow">
+                                  <div>
+                                      <p className="text-xs text-pacYellow">{f.config.nombreFeria}</p>
+                                      <p className="text-[8px] text-gray-500">{new Date(f.archivedAt).toLocaleDateString()}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                      <span className="text-xs">${f.reportSummary.montoTotalGeneral}</span>
+                                      <button onClick={() => {if(confirm('REACTIVATE?')) onActivateHistoricalFeria(f);}} className="collidable text-[8px] border border-green-500 text-green-500 px-1">LOAD</button>
+                                      <button onClick={() => {if(confirm('DELETE?')) onDeleteHistoricalFeria(f.id);}} className="collidable text-[8px] border border-red-500 text-red-500 px-1">DEL</button>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          )
+      }
+
+      function App() {
+        const [started, setStarted] = React.useState(false);
+        const [userRole, setUserRole] = React.useState(null);
+        const [activeFeriaConfig, setActiveFeriaConfig] = React.useState(null);
+        const [activeSales, setActiveSales] = React.useState([]);
+        const [feriaHistory, setFeriaHistory] = React.useState([]);
+        const [loading, setLoading] = React.useState(true);
+
+        const handleStart = async () => {
+             await audioService.init();
+             audioService.playWaka();
+             
+             // Request Accelerometer (iOS 13+) - fails gracefully on Android/others
+             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') setStarted(true);
+                    else { alert("Physics limited."); setStarted(true); }
+                } catch (e) { console.error(e); setStarted(true); }
+             } else {
+                 setStarted(true);
+             }
+        };
+
+        React.useEffect(() => {
+            const unsubscribe = auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    const idTokenResult = await user.getIdTokenResult();
+                    setUserRole(idTokenResult.claims.role || null);
+                } else {
+                    setUserRole(null); setActiveFeriaConfig(null);
+                }
+                setLoading(false);
+            });
+            return () => unsubscribe();
+        }, []);
+
+        React.useEffect(() => {
+            if (!userRole) return;
+            const u1 = db.collection('settings').doc('activeFeria').onSnapshot(doc => setActiveFeriaConfig(doc.exists && doc.data().nombreFeria ? doc.data() : null));
+            const u2 = db.collection('activeSales').onSnapshot(snap => setActiveSales(snap.docs.map(d => ({id:d.id, ...d.data()}))));
+            let u3 = () => {};
+            if (userRole === ADMIN_ROLE) u3 = db.collection('feriaHistory').orderBy('archivedAt', 'desc').onSnapshot(snap => setFeriaHistory(snap.docs.map(d => ({id:d.id, ...d.data()}))));
+            return () => { u1(); u2(); u3(); };
+        }, [userRole]);
+
+        if (!started) return <InsertCoinScreen onStart={handleStart} />;
+        if (loading) return <div className="h-screen w-full flex items-center justify-center bg-black"><div className="pac-loader"></div></div>;
+
+        return (
+            <React.Fragment>
+                {!userRole ? <AuthScreen onLogin={setUserRole} /> :
+                 userRole === ADMIN_ROLE ? 
+                    <AdminDashboard activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} feriaHistory={feriaHistory} onUpdateFeriaConfig={apiService.saveActiveFeriaConfig} onFinalizeFeria={() => apiService.archiveCurrentFeria({config: activeFeriaConfig, sales: activeSales, reportSummary: calculateReportSummary(activeFeriaConfig, activeSales), archivedAt: new Date().toISOString()})} onActivateHistoricalFeria={apiService.activateHistoricalFeria} onDeleteHistoricalFeria={apiService.deleteHistoricalFeria} onLogout={apiService.logout} /> :
+                    <SalesTPV activeFeriaConfig={activeFeriaConfig} onLogout={apiService.logout} isActive={started} />
+                }
+            </React.Fragment>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<React.StrictMode><App /></React.StrictMode>);
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
