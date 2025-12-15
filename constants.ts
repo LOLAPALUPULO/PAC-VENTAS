@@ -1,15 +1,12 @@
-export const ADMIN_USER_EMAIL = 'admin@example.com';
+export const ENC_ADMIN_EMAIL = 'bG9sYXBhbHVwdWxvQGdtYWlsLmNvbQ==';
+export const ENC_ADMIN_PASS = 'cmVnaXMxMjM=';
+export const ENC_SALES_EMAIL = 'Y2JvbHVkYXNAZ21haWwuY29t';
+export const ENC_SALES_PASS = 'bG9sMTIzNDU=';
 
-// Real short sine beep (approx 50ms) for UI Click
-const UI_CLICK_SOUND_BASE64 = 'data:audio/wav;base64,UklGRlIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSwAAACAgICAgICAgICAgICAgICAgICAgICAgICAf39/f39/f39/f39/f39/f39/f38=';
+export const ENC_TRIGGER_ADMIN = 'cmVnaXM=';
+export const ENC_TRIGGER_SALES = 'bG9s';
 
-// Success / Chime sound
-const SUCCESS_SOUND_BASE64 = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAf39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f38=';
+export const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7284f6b59b63004079/lola.svg';
 
-export const DIGITAL_PAYMENT_SOUND_BASE64 = SUCCESS_SOUND_BASE64;
-export const CASH_PAYMENT_SOUND_BASE64 = SUCCESS_SOUND_BASE64;
-export const PINTA_ADD_SOUND_BASE64 = UI_CLICK_SOUND_BASE64;
-export const PINTA_SUB_SOUND_BASE64 = UI_CLICK_SOUND_BASE64;
-export const LITRO_ADD_SOUND_BASE64 = UI_CLICK_SOUND_BASE64;
-export const LITRO_SUB_SOUND_BASE64 = UI_CLICK_SOUND_BASE64;
-export { UI_CLICK_SOUND_BASE64 };
+export const BEER_STYLES = ['S.IPA', 'SCOTISH', 'GOLDEN', 'HONEY', 'IPA', 'PORTER'];
+export const PINTA_VOLUME_LITERS = 0.473;
