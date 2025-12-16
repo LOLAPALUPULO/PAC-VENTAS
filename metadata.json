@@ -1,5 +1,6 @@
+
 {
-  "name": "PAC-VENTAS",
-  "description": "A light single-page application for event sales registration, calculating quantities and totals, with admin and sales user roles, active and historical sales reporting, and PDF download capabilities.",
+  "name": "TODA OK pero no carga LOLA VENTAS ",
+  "description": "Sistema de gestión de ventas de cerveza con control de stock y reportes.",
   "requestFramePermissions": []
 }
