@@ -234,7 +234,7 @@
       const ENC_TRIGGER_ADMIN = 'cmVnaXM='; 
       const ENC_TRIGGER_SALES = 'bG9s';
 
-      const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7284f6b59b63004079/lola.svg';
+      const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7243f6b59b63004079/lola.svg';
 
       // --- Audio Service using Tone.js (from services/audioService.ts) ---
       const audioService = {
@@ -482,8 +482,6 @@
         const [error, setError] = React.useState(null);
         const [loading, setLoading] = React.useState(false);
 
-        console.log("AuthScreen rendering."); // Debugging log
-
         const normalizedInput = usernameInput.trim().toLowerCase();
         const isAdminInput = normalizedInput === atob(ENC_TRIGGER_ADMIN);
         const isSalesInput = normalizedInput === atob(ENC_TRIGGER_SALES);
@@ -599,14 +597,14 @@
                     setPendingOrders([]); 
                     localStorage.removeItem('pendingOrders');
                     for (const sale of ordersToSync) {
-                        try { await apiService.addSale(sale); } catch (e) { 
+                        try { await onAddSale(sale); } catch (e) { // Use onAddSale prop
                              console.error("Sync failed for item", e); 
                         }
                     }
                 };
                 syncOrders();
             }
-        }, [isOnline, pendingOrders]);
+        }, [isOnline, pendingOrders, onAddSale]); // Add onAddSale to dependencies
 
         const triggerVisualFeedback = (buttonId) => {
             setActiveButton(buttonId);
@@ -741,7 +739,7 @@
           };
 
           if (isOnline) {
-              apiService.addSale(newSale);
+              onAddSale(newSale); // Use onAddSale prop
           } else {
              const updatedPending = [...pendingOrders, { ...newSale, id: `temp-${Date.now()}` }];
              setPendingOrders(updatedPending);
@@ -756,7 +754,6 @@
           setTimeout(() => setShowSuccess(false), 2000);
         };
 
-        console.log("SalesTPV rendering. ActiveFeriaConfig:", activeFeriaConfig ? activeFeriaConfig.nombreFeria : "None"); // Debugging log
 
         if (!activeFeriaConfig) {
           return (
@@ -1016,18 +1013,26 @@
           const [showHistoricalReportModal, setShowHistoricalReportModal] = React.useState(false);
           const [selectedHistoricalFeria, setSelectedHistoricalFeria] = React.useState(null);
 
-          console.log("AdminDashboard rendering. View:", view, "ActiveFeriaConfig:", activeFeriaConfig ? activeFeriaConfig.nombreFeria : "None"); // Debugging log
-
-          // New useEffect to automatically switch view
+          // New useEffect to automatically switch view based on activeFeriaConfig presence
           React.useEffect(() => {
-              if (activeFeriaConfig && view !== 'report') {
-                  console.log("ActiveFeriaConfig detected, switching view to 'report'.");
-                  setView('report');
-              } else if (!activeFeriaConfig && view !== 'config') {
-                  console.log("No ActiveFeriaConfig, switching view to 'config'.");
-                  setView('config');
+              console.log("AdminDashboard useEffect triggered.");
+              console.log("  Current activeFeriaConfig:", activeFeriaConfig ? activeFeriaConfig.nombreFeria : "None");
+              console.log("  Current view state:", view);
+
+              if (activeFeriaConfig) {
+                  // If there's an active feria, always default to the report view
+                  if (view !== 'report') {
+                      console.log("  AdminDashboard: ActiveFeriaConfig detected, switching view to 'report'.");
+                      setView('report');
+                  }
+              } else {
+                  // If there's no active feria, always default to the config view
+                  if (view !== 'config') {
+                      console.log("  AdminDashboard: No ActiveFeriaConfig, switching view to 'config'.");
+                      setView('config');
+                  }
               }
-          }, [activeFeriaConfig]); // Dependency on activeFeriaConfig
+          }, [activeFeriaConfig, view]); // Dependency on activeFeriaConfig and view to prevent unnecessary re-renders
 
           const setViewWithSound = (v) => { audioService.playClick(); setView(v); };
 
@@ -1055,7 +1060,7 @@
               <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
                 <div className="animate-slide-up">
                     {view === 'config' && <FeriaConfigForm activeFeriaConfig={activeFeriaConfig} onSave={onUpdateFeriaConfig} onFinalizeFeria={onFinalizeFeria} />}
-                    {view === 'report' && <SalesReport activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} onFinalizeFeria={onFinalizeFeria} />}
+                    {view === 'report' && <SalesReport activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} onFinalizeFeria={onFinalizeFeria} goToConfig={() => setViewWithSound('config')} />}
                     {view === 'history' && <FeriaHistoryList activeFeriaConfig={activeFeriaConfig} feriaHistory={feriaHistory} onActivateFeria={onActivateHistoricalFeria} onShowReport={(f) => { audioService.playClick(); setSelectedHistoricalFeria(f); setShowHistoricalReportModal(true); }} onDeleteFeria={(id) => { audioService.playClick(); if(window.confirm('Eliminar?')) onDeleteHistoricalFeria(id); }} />}
                 </div>
               </main>
@@ -1087,6 +1092,17 @@
                       wastePerPint: activeFeriaConfig.wastePerPint || 0,
                       stock: stock
                   });
+              } else {
+                  // Reset form data if no active fair, preparing for a new one
+                  setFormData({ 
+                      nombreFeria: '', 
+                      fechaInicio: '', 
+                      fechaFin: '', 
+                      valorPinta: 0, 
+                      valorLitro: 0,
+                      wastePerPint: 0,
+                      stock: BEER_STYLES.reduce((acc, style) => ({...acc, [style]: 0}), {})
+                  });
               }
           }, [activeFeriaConfig]);
 
@@ -1110,6 +1126,12 @@
           return (
               <div className="glass shadow-xl rounded-2xl p-8 border border-white/20">
                   <h3 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white flex items-center gap-2"><span className="w-2 h-8 bg-primary rounded-full"></span>Configuración de Feria</h3>
+                  {!activeFeriaConfig && (
+                      <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 p-4 rounded-xl mb-6 flex items-center gap-3 animate-fade-in">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          <p className="font-semibold text-base">¡Bienvenido Administrador! No hay una feria activa. Por favor, crea una nueva configuración.</p>
+                      </div>
+                  )}
                   {feedback.msg && <div className={`p-4 mb-4 rounded-xl font-bold animate-pulse ${feedback.isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{feedback.msg}</div>}
                   <form onSubmit={handleSubmit} className="space-y-6">
                       
@@ -1175,8 +1197,22 @@
           );
       };
 
-      const SalesReport = ({ activeFeriaConfig, activeSales, onFinalizeFeria }) => {
-          if (!activeFeriaConfig) return <div className="text-center p-10 text-gray-500 text-xl font-light">No hay feria activa.</div>;
+      const SalesReport = ({ activeFeriaConfig, activeSales, onFinalizeFeria, goToConfig }) => {
+          if (!activeFeriaConfig) {
+            return (
+                <div className="glass shadow-xl rounded-2xl p-8 border border-white/20 flex flex-col items-center justify-center text-center space-y-6 min-h-[400px]">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-gray-400 dark:text-gray-600 opacity-70 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 17v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <h3 className="text-3xl font-bold text-gray-700 dark:text-white">¡Ups! No hay feria activa.</h3>
+                    <p className="text-lg text-gray-500 dark:text-gray-400 max-w-md">Para comenzar a ver los reportes de ventas, primero debes configurar una nueva feria en la sección de configuración.</p>
+                    <button 
+                        onClick={() => { audioService.playClick(); goToConfig(); }} 
+                        className="btn-3d py-3 px-8 bg-gradient-to-r from-primary to-emerald-600 text-white rounded-xl font-bold shadow-3d-primary active:shadow-3d-primary-active transition transform hover:-translate-y-1"
+                    >
+                        Ir a Configurar Feria
+                    </button>
+                </div>
+            );
+          }
           const report = calculateReportSummary(activeFeriaConfig, activeSales);
           
           const handleShare = () => {
@@ -1226,7 +1262,7 @@
                       </h4>
                       <div className="space-y-4">
                           {BEER_STYLES.map(style => {
-                              const initialStock = feriaConfig.stock ? (feriaConfig.stock[style] || 0) : 0;
+                              const initialStock = activeFeriaConfig.stock ? (activeFeriaConfig.stock[style] || 0) : 0;
                               const consumed = report.consumptionByStyle ? (report.consumptionByStyle[style] || 0) : 0;
                               const remaining = Math.max(0, initialStock - consumed);
                               const percent = initialStock > 0 ? (remaining / initialStock) * 100 : 0;
@@ -1447,12 +1483,14 @@
         const [loading, setLoading] = React.useState(true);
 
         React.useEffect(() => {
+            console.log("App: onAuthStateChanged listener set up.");
             const unsubscribe = auth.onAuthStateChanged(async (user) => { // Removed explicit type any
-                console.log("Auth state changed. User:", user ? user.uid : "null"); // Debugging log
                 if (user) {
+                    console.log("App: User logged in:", user.email);
                     const idTokenResult = await user.getIdTokenResult();
                     setUserRole(idTokenResult.claims.role || null);
                 } else {
+                    console.log("App: User logged out.");
                     setUserRole(null); setActiveFeriaConfig(null); setActiveSales([]); setFeriaHistory([]);
                 }
                 setLoading(false);
@@ -1461,13 +1499,33 @@
         }, []);
 
         React.useEffect(() => {
-            if (!userRole) return;
-            console.log("Fetching data for user role:", userRole); // Debugging log
-            const u1 = db.collection('settings').doc('activeFeria').onSnapshot(doc => setActiveFeriaConfig(doc.exists && doc.data().nombreFeria ? doc.data() : null)); // Removed explicit type any
-            const u2 = db.collection('activeSales').onSnapshot(snap => setActiveSales(snap.docs.map(d => ({id:d.id, ...d.data()})))); // Removed explicit type any
+            if (!userRole) {
+                console.log("App: No user role, skipping Firestore listeners.");
+                return;
+            }
+            console.log("App: Setting up Firestore listeners for role:", userRole);
+            const u1 = db.collection('settings').doc('activeFeria').onSnapshot(doc => {
+                const config = doc.exists && doc.data().nombreFeria ? doc.data() : null;
+                console.log("App: ActiveFeriaConfig updated:", config ? config.nombreFeria : "None");
+                setActiveFeriaConfig(config);
+            });
+            const u2 = db.collection('activeSales').onSnapshot(snap => {
+                const sales = snap.docs.map(d => ({id:d.id, ...d.data()}));
+                console.log("App: ActiveSales updated. Count:", sales.length);
+                setActiveSales(sales);
+            });
             let u3 = () => {};
-            if (userRole === ADMIN_ROLE) u3 = db.collection('feriaHistory').orderBy('archivedAt', 'desc').onSnapshot(snap => setFeriaHistory(snap.docs.map(d => ({id:d.id, ...d.data()})))); // Removed explicit type any
-            return () => { u1(); u2(); u3(); };
+            if (userRole === ADMIN_ROLE) {
+                u3 = db.collection('feriaHistory').orderBy('archivedAt', 'desc').onSnapshot(snap => {
+                    const history = snap.docs.map(d => ({id:d.id, ...d.data()}));
+                    console.log("App: FeriaHistory updated. Count:", history.length);
+                    setFeriaHistory(history);
+                });
+            }
+            return () => { 
+                console.log("App: Unsubscribing from Firestore listeners.");
+                u1(); u2(); u3(); 
+            };
         }, [userRole]);
 
         if (loading) return <div className="min-h-screen w-full flex items-center justify-center bg-darkbg"><div className="spinner border-t-4 border-primary w-12 h-12"></div></div>;
@@ -1477,7 +1535,7 @@
                 {!userRole ? <AuthScreen onLogin={setUserRole} /> :
                  userRole === ADMIN_ROLE ? 
                     <AdminDashboard activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} feriaHistory={feriaHistory} onUpdateFeriaConfig={apiService.saveActiveFeriaConfig} onFinalizeFeria={() => apiService.archiveCurrentFeria({config: activeFeriaConfig, sales: activeSales, reportSummary: calculateReportSummary(activeFeriaConfig, activeSales), archivedAt: new Date().toISOString()})} onActivateHistoricalFeria={apiService.activateHistoricalFeria} onDeleteHistoricalFeria={apiService.deleteHistoricalFeria} onLogout={apiService.logout} /> :
-                    <SalesTPV activeFeriaConfig={activeFeriaConfig} onAddSale={() => {}} onLogout={apiService.logout} />
+                    <SalesTPV activeFeriaConfig={activeFeriaConfig} onAddSale={apiService.addSale} onLogout={apiService.logout} />
                 }
             </React.Fragment>
         );
