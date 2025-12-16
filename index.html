@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>LOLA VENTAS</title>
     <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://cdn.tailwindcss.com"></script>
     <!-- Tone.js CDN for generative audio -->
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <!-- Custom Tailwind configuration -->
@@ -158,8 +158,15 @@
     <script type="text/javascript" src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
     <script type="text/javascript" src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
     
-    <!-- NO <link rel="stylesheet" href="/index.css"> - Tailwind is used directly -->
-    <!-- NO <script type="importmap"> - Using global React/ReactDOM -->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "firebase/": "https://esm.sh/firebase@^12.7.0/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
 <link rel="stylesheet" href="/index.css">
 </head>
 <body class="bg-lightbg dark:bg-darkbg text-textdark dark:text-textlight min-h-screen font-sans overflow-x-hidden selection:bg-primary selection:text-white">
@@ -228,7 +235,7 @@
       
       const ENC_ADMIN_EMAIL = 'bG9sYXBhbHVwdWxvQGdtYWlsLmNvbQ==';
       const ENC_ADMIN_PASS = 'cmVnaXMxMjM=';
-      const ENC_SALES_EMAIL = 'Y2JvbHVkYXNAZ21haWwuY29t'; // CORRECTED: Was 'Y2JvbHVkYXNAZ21haWwub20='
+      const ENC_SALES_EMAIL = 'Y2JvbHVkYXNAZ21haWwuY29t'; 
       const ENC_SALES_PASS = 'bG9sMTIzNDU=';
       
       const ENC_TRIGGER_ADMIN = 'cmVnaXM='; 
@@ -390,12 +397,38 @@
               return true;
           },
           saveActiveFeriaConfig: async (config) => {
-              await db.collection('settings').doc('activeFeria').set(config);
+              // Firebase cannot store undefined values, so clean the data
+              const cleanConfig = JSON.parse(JSON.stringify(config));
+              await db.collection('settings').doc('activeFeria').set(cleanConfig);
               return true;
           },
           addSale: async (sale) => {
-              await db.collection('activeSales').add(sale);
+              // Firebase cannot store undefined values, so clean the data
+              const cleanSale = JSON.parse(JSON.stringify(sale));
+              await db.collection('activeSales').add(cleanSale);
               return true;
+          },
+          reloadActiveFeriaStock: async (stockIncrements) => {
+            const activeFeriaDocRef = db.collection('settings').doc('activeFeria');
+            const activeFeriaSnapshot = await activeFeriaDocRef.get();
+
+            if (!activeFeriaSnapshot.exists) {
+              throw new Error('No hay feria activa para recargar stock.');
+            }
+
+            const currentFeriaConfig = activeFeriaSnapshot.data();
+            const updatedStock = { ...currentFeriaConfig.stock };
+
+            for (const style in stockIncrements) {
+              if (Object.prototype.hasOwnProperty.call(stockIncrements, style)) {
+                const incrementAmount = stockIncrements[style];
+                if (incrementAmount > 0) { // Only add positive increments
+                  updatedStock[style] = (updatedStock[style] || 0) + incrementAmount;
+                }
+              }
+            }
+            await activeFeriaDocRef.update({ stock: updatedStock });
+            return true;
           },
           archiveCurrentFeria: async (feriaData) => {
               const batch = db.batch();
@@ -448,7 +481,7 @@
                       const batch = db.batch();
                       deleteDocs.slice(i, i + BATCH_SIZE).forEach((doc) => batch.delete(doc.ref));
                       await batch.commit();
-                  }
+                   }
               }
 
               const cleanConfig = JSON.parse(JSON.stringify(feriaToActivate.config));
@@ -473,10 +506,8 @@
           },
       };
 
-      // --- Components (from App.tsx) ---
-      // Removed TypeScript interface `CartItem` (kept for reference in comment if desired)
-      // interface CartItem { style: string; unit: TipoUnidad; quantity: number; }
-
+      // --- Components (from App.tsx, AuthScreen.tsx, SalesTPV.tsx, AdminDashboard.tsx, FeriaConfigForm.tsx, SalesReport.tsx, FeriaHistoryList.tsx, HistoricalFeriaReportModal.tsx) ---
+      
       const AuthScreen = ({ onLogin }) => {
         const [usernameInput, setUsernameInput] = React.useState('');
         const [error, setError] = React.useState(null);
@@ -497,13 +528,20 @@
             setLoading(true);
             setError(null);
             try {
-                const result = await apiService.login(email, password);
-                if (result.success) {
-                     if (expectedRole && result.role !== expectedRole) throw new Error(`Sin permisos de ${expectedRole}.`);
-                     onLogin(result.role, result.username);
-                }
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const idTokenResult = await userCredential.user.getIdTokenResult(true);
+                const role = idTokenResult.claims.role || null;
+
+                if (role && expectedRole && role !== expectedRole) throw new Error(`Sin permisos de ${expectedRole}.`);
+                onLogin(role); // Pass the actual role to App
             } catch (err) {
-                setError(err.message || 'Error de login.');
+                let message = 'Error de autenticación.';
+                  if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+                      message = 'Credenciales inválidas.';
+                  } else if (err.code === 'auth/invalid-email') {
+                      message = 'Email inválido.';
+                  }
+                setError(message);
                 audioService.playError();
             } finally {
                 setLoading(false);
@@ -556,8 +594,13 @@
       };
 
       const SalesTPV = ({ activeFeriaConfig, onAddSale, onLogout }) => {
-        // Removed explicit TypeScript type for CartItem in useState
-        const [styleStaging, setStyleStaging] = React.useState({});
+        const [styleStaging, setStyleStaging] = React.useState(() => {
+          const initialStaging = {};
+          for (const style of BEER_STYLES) {
+            initialStaging[style] = 0;
+          }
+          return initialStaging;
+        });
         const [cart, setCart] = React.useState([]);
         
         const [activeButton, setActiveButton] = React.useState(null); 
@@ -604,7 +647,7 @@
                 };
                 syncOrders();
             }
-        }, [isOnline, pendingOrders, onAddSale]); // Add onAddSale to dependencies
+        }, [isOnline, pendingOrders, onAddSale]);
 
         const triggerVisualFeedback = (buttonId) => {
             setActiveButton(buttonId);
@@ -614,7 +657,7 @@
 
         // Calculate Totals based on Cart
         const totalMoney = cart.reduce((acc, item) => {
-            const price = item.unit === TipoUnidad.Pinta ? activeFeriaConfig.valorPinta : activeFeriaConfig.valorLitro;
+            const price = item.unit === TipoUnidad.Pinta ? (activeFeriaConfig?.valorPinta || 0) : (activeFeriaConfig?.valorLitro || 0);
             return acc + (price * item.quantity);
         }, 0);
 
@@ -623,7 +666,7 @@
 
         // Aggregated cart items for display
         const displayCart = React.useMemo(() => {
-            const aggregated = {}; // Removed explicit type
+            const aggregated = {}; 
             cart.forEach(item => {
                 const key = `${item.style}-${item.unit}`;
                 if (aggregated[key]) {
@@ -665,7 +708,7 @@
             triggerVisualFeedback(unit === TipoUnidad.Pinta ? 'pinta' : 'litro');
             audioService.playAdd();
 
-            const newItems = []; // Removed explicit type
+            const newItems = [];
             Object.entries(styleStaging).forEach(([style, val]) => {
                 const qty = val;
                 if (qty > 0) {
@@ -675,7 +718,12 @@
 
             setCart(prev => [...prev, ...newItems]);
             // NOTE: Clear styleStaging after adding to cart, as requested ("no sumen cantidades")
-            setStyleStaging({}); 
+            setStyleStaging(
+              BEER_STYLES.reduce((acc, s) => {
+                acc[s] = 0;
+                return acc;
+              }, {}),
+            );
         };
 
         const handleRemoveFromCart = (unit) => {
@@ -707,13 +755,23 @@
                 return newCart;
             });
             // Clear styleStaging after removing from cart as well
-            setStyleStaging({});
+            setStyleStaging(
+              BEER_STYLES.reduce((acc, s) => {
+                acc[s] = 0;
+                return acc;
+              }, {}),
+            );
         };
 
         const handleClearCart = () => {
             audioService.playSub(); // Using 'sub' sound for clearing
             setCart([]);
-            setStyleStaging({});
+            setStyleStaging(
+              BEER_STYLES.reduce((acc, s) => {
+                acc[s] = 0;
+                return acc;
+              }, {}),
+            );
         };
 
         const handleRegisterSale = async (tipoPago) => {
@@ -728,7 +786,7 @@
               if(i.unit === TipoUnidad.Litro) totalLitroCount += i.quantity;
           });
 
-          const newSale = { // Removed explicit type 'Sale'
+          const newSale = { 
             fechaVenta: new Date().toISOString(),
             items: cart,
             tipoUnidad: (totalPintaCount > 0 && totalLitroCount > 0) ? TipoUnidad.Mixed : (totalPintaCount > 0 ? TipoUnidad.Pinta : TipoUnidad.Litro),
@@ -739,7 +797,7 @@
           };
 
           if (isOnline) {
-              onAddSale(newSale); // Use onAddSale prop
+              onAddSale(newSale); 
           } else {
              const updatedPending = [...pendingOrders, { ...newSale, id: `temp-${Date.now()}` }];
              setPendingOrders(updatedPending);
@@ -747,7 +805,12 @@
           }
 
           setCart([]);
-          setStyleStaging({}); // Clear selection only on final sale
+          setStyleStaging(
+            BEER_STYLES.reduce((acc, s) => {
+              acc[s] = 0;
+              return acc;
+            }, {}),
+          );
           triggerVisualFeedback(tipoPago === TipoPago.Digital ? 'digital' : 'billete');
           
           setShowSuccess(true);
@@ -1063,7 +1126,7 @@
                 <div className="animate-slide-up">
                     {view === 'config' && <FeriaConfigForm activeFeriaConfig={activeFeriaConfig} onSave={onUpdateFeriaConfig} onFinalizeFeria={onFinalizeFeria} />}
                     {view === 'report' && <SalesReport activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} onFinalizeFeria={onFinalizeFeria} goToConfig={() => setViewWithSound('config')} />}
-                    {view === 'history' && <FeriaHistoryList activeFeriaConfig={activeFeriaConfig} feriaHistory={feriaHistory} onActivateFeria={onActivateHistoricalFeria} onShowReport={(f) => { audioService.playClick(); setSelectedHistoricalFeria(f); setShowHistoricalReportModal(true); }} onDeleteFeria={(id) => { audioService.playClick(); if(window.confirm('Eliminar?')) onDeleteHistoricalFeria(id); }} />}
+                    {view === 'history' && <FeriaHistoryList activeFeriaConfig={activeFeriaConfig} feriaHistory={feriaHistory} onActivateFeria={onActivateHistoricalFeria} onShowReport={(f) => { audioService.playClick(); setSelectedHistoricalFeria(f); setShowHistoricalReportModal(true); }} onDeleteFeria={(id) => { audioService.playClick(); if(window.confirm('¿Estás seguro de que quieres eliminar esta feria?')) onDeleteHistoricalFeria(id); }} />}
                 </div>
               </main>
               
@@ -1073,7 +1136,6 @@
       };
 
       const FeriaConfigForm = ({ activeFeriaConfig, onSave, onFinalizeFeria }) => {
-          // Removed explicit TypeScript type for FeriaConfig in useState
           const [formData, setFormData] = React.useState({ 
               nombreFeria: '', 
               fechaInicio: '', 
@@ -1083,6 +1145,9 @@
               wastePerPint: 0,
               stock: BEER_STYLES.reduce((acc, style) => ({...acc, [style]: 0}), {})
           });
+          const [reloadStockAmounts, setReloadStockAmounts] = React.useState(() =>
+            BEER_STYLES.reduce((acc, style) => ({ ...acc, [style]: 0 }), {})
+          );
           const [feedback, setFeedback] = React.useState({ msg: null, isError: false });
           
           React.useEffect(() => {
@@ -1106,28 +1171,61 @@
                       stock: BEER_STYLES.reduce((acc, style) => ({...acc, [style]: 0}), {})
                   });
               }
+              // Also reset reload amounts when activeFeriaConfig changes
+              setReloadStockAmounts(BEER_STYLES.reduce((acc, style) => ({ ...acc, [style]: 0 }), {}));
           }, [activeFeriaConfig]);
 
-          const handleSubmit = async (e) => { // Removed explicit type React.FormEvent
+          const handleSubmitConfig = async (e) => { 
               e.preventDefault();
               audioService.playClick();
               try {
                   await onSave(formData);
-                  setFeedback({ msg: 'Guardado correctamente.', isError: false });
-              } catch(e) { setFeedback({ msg: 'Error al guardar.', isError: true }); }
+                  setFeedback({ msg: 'Configuración guardada correctamente.', isError: false });
+              } catch(e) { setFeedback({ msg: e.message || 'Error al guardar configuración.', isError: true }); }
               setTimeout(() => setFeedback({msg: null, isError: false}), 3000);
           };
 
-          const handleStockChange = (style, value) => { // Removed explicit type string
+          const handleInitialStockChange = (style, value) => { 
               setFormData(prev => ({
                   ...prev,
                   stock: { ...prev.stock, [style]: parseFloat(value) || 0 }
               }));
           };
 
+          const handleReloadStockAmountChange = (style, value) => {
+            setReloadStockAmounts((prev) => ({ ...prev, [style]: parseFloat(value) || 0 }));
+          };
+
+          const handleReloadStock = async () => {
+            audioService.playClick();
+            const amountsToReload = Object.entries(reloadStockAmounts)
+                                        .filter(([, amount]) => amount > 0)
+                                        .reduce((acc, [style, amount]) => ({ ...acc, [style]: amount }), {});
+
+            if (Object.keys(amountsToReload).length === 0) {
+              setFeedback({ msg: 'Ingrese cantidades para recargar.', isError: true });
+              audioService.playError();
+              setTimeout(() => setFeedback({ msg: null, isError: false }), 3000);
+              return;
+            }
+
+            try {
+              await apiService.reloadActiveFeriaStock(amountsToReload);
+              setFeedback({ msg: 'Stock recargado correctamente.', isError: false });
+              setReloadStockAmounts(BEER_STYLES.reduce((acc, style) => ({ ...acc, [style]: 0 }), {})); // Reset after success
+            } catch (e) {
+              setFeedback({ msg: e.message || 'Error al recargar stock.', isError: true });
+              audioService.playError();
+            }
+            setTimeout(() => setFeedback({ msg: null, isError: false }), 3000);
+          };
+
+
           return (
               <div className="glass shadow-xl rounded-2xl p-8 border border-white/20">
-                  <h3 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white flex items-center gap-2"><span className="w-2 h-8 bg-primary rounded-full"></span>Configuración de Feria</h3>
+                  <h3 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white flex items-center gap-2">
+                    <span className="w-2 h-8 bg-primary rounded-full"></span>Configuración de Feria
+                  </h3>
                   {!activeFeriaConfig && (
                       <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 p-4 rounded-xl mb-6 flex items-center gap-3 animate-fade-in">
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -1135,9 +1233,29 @@
                       </div>
                   )}
                   {feedback.msg && <div className={`p-4 mb-4 rounded-xl font-bold animate-pulse ${feedback.isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{feedback.msg}</div>}
-                  <form onSubmit={handleSubmit} className="space-y-6">
+                  <form onSubmit={handleSubmitConfig} className="space-y-6">
                       
-                      {/* Stock Management Section - FIRST as requested */}
+                      {/* General Config */}
+                      <div>
+                          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Nombre del Evento</label>
+                          <input type="text" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-primary/20 focus:border-primary text-dark dark:text-white transition-all" value={formData.nombreFeria} onChange={e => setFormData({...formData, nombreFeria: e.target.value})} />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Inicio</label><input type="date" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white" value={formData.fechaInicio} onChange={e => setFormData({...formData, fechaInicio: e.target.value})} /></div>
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Fin</label><input type="date" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white" value={formData.fechaFin} onChange={e => setFormData({...formData, fechaFin: e.target.value})} /></div>
+                      </div>
+
+                      <div className="border-t border-white/20 pt-4"></div>
+
+                      {/* Pricing Config (Moved to this position) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Valor Pinta ($)</label><input type="number" step="1" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white text-2xl font-mono font-bold" value={formData.valorPinta} onChange={e => setFormData({...formData, valorPinta: Math.round(parseFloat(e.target.value) || 0)})} /></div>
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Valor Litro ($)</label><input type="number" step="1" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white text-2xl font-mono font-bold" value={formData.valorLitro} onChange={e => setFormData({...formData, valorLitro: Math.round(parseFloat(e.target.value) || 0)})} /></div>
+                      </div>
+
+                      <div className="border-t border-white/20 pt-4"></div>
+
+                      {/* Stock Management Section (Initial Stock) */}
                       <div className="bg-gray-100 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700">
                           <h4 className="text-xl font-bold mb-4 text-primary uppercase tracking-wider flex items-center gap-2">
                               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
@@ -1153,7 +1271,7 @@
                                           step="0.1" 
                                           className="w-full p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-center font-mono font-bold"
                                           value={formData.stock[style] || 0}
-                                          onChange={(e) => handleStockChange(style, e.target.value)}
+                                          onChange={(e) => handleInitialStockChange(style, e.target.value)}
                                       />
                                   </div>
                               ))}
@@ -1167,6 +1285,7 @@
                               <input 
                                   type="number" 
                                   step="1" 
+                                  onFocus={() => audioService.playClick()}
                                   className="w-full md:w-1/2 p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg font-mono font-bold"
                                   value={formData.wastePerPint}
                                   onChange={(e) => setFormData({...formData, wastePerPint: parseFloat(e.target.value) || 0})}
@@ -1174,21 +1293,37 @@
                           </div>
                       </div>
 
-                      <div className="border-t border-white/20 pt-4"></div>
+                      {activeFeriaConfig && (
+                        <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 animate-slide-up">
+                          <h4 className="text-xl font-bold mb-4 text-secondary uppercase tracking-wider flex items-center gap-2">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm1 14h-2v-4H8V8h3V5h2v3h3v2h-3v4z"/></svg>
+                            RECARGAR STOCK (Litros Adicionales)
+                          </h4>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                            {BEER_STYLES.map((style) => (
+                              <div key={style}>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{style}</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  onFocus={() => audioService.playClick()}
+                                  className="w-full p-3 bg-white dark:bg-gray-900 border border-secondary dark:border-secondaryDark rounded-lg text-center font-mono font-bold focus:ring-2 focus:ring-secondary/50"
+                                  value={reloadStockAmounts[style] || 0}
+                                  onChange={(e) => handleReloadStockAmountChange(style, e.target.value)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleReloadStock}
+                            className="btn-3d w-full py-4 px-6 bg-gradient-to-r from-secondary to-orange-600 text-white rounded-xl font-bold shadow-3d-secondary active:shadow-3d-secondary-active uppercase tracking-wider"
+                          >
+                            CONFIRMAR RECARGA DE STOCK
+                          </button>
+                        </div>
+                      )}
 
-                      {/* General Config */}
-                      <div>
-                          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Nombre del Evento</label>
-                          <input type="text" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-primary/20 focus:border-primary text-dark dark:text-white transition-all" value={formData.nombreFeria} onChange={e => setFormData({...formData, nombreFeria: e.target.value})} />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Inicio</label><input type="date" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white" value={formData.fechaInicio} onChange={e => setFormData({...formData, fechaInicio: e.target.value})} /></div>
-                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Fin</label><input type="date" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white" value={formData.fechaFin} onChange={e => setFormData({...formData, fechaFin: e.target.value})} /></div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Valor Pinta ($)</label><input type="number" step="1" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white text-2xl font-mono font-bold" value={formData.valorPinta} onChange={e => setFormData({...formData, valorPinta: Math.round(parseFloat(e.target.value) || 0)})} /></div>
-                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Valor Litro ($)</label><input type="number" step="1" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white text-2xl font-mono font-bold" value={formData.valorLitro} onChange={e => setFormData({...formData, valorLitro: Math.round(parseFloat(e.target.value) || 0)})} /></div>
-                      </div>
 
                       <div className="pt-6 flex flex-col md:flex-row gap-4">
                           <button type="submit" className="btn-3d flex-1 py-4 px-6 bg-gradient-to-r from-primary to-emerald-600 text-white rounded-xl font-bold shadow-3d-primary active:shadow-3d-primary-active uppercase tracking-wider">GUARDAR CAMBIOS</button>
@@ -1223,7 +1358,7 @@
                                `💰 *Total: $${report.montoTotalGeneral.toLocaleString()}*\n` +
                                `🍺 Volumen: ${report.totalPintas} P / ${report.totalLitros} L\n` +
                                `----------------\n` +
-                               `💳 Digital: $${report.montoTotalDigital.toLocaleString()}\n` +
+                               `💳 Digital: $${report.montoTotalDigital.toLocaleString()}*\n` +
                                `💵 Efectivo: $${report.montoTotalBillete.toLocaleString()}`;
                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
           };
@@ -1320,8 +1455,8 @@
                                   )}
                                   <div className="mt-4 flex flex-col space-y-2">
                                       <button onClick={() => onShowReport(feria)} className="w-full py-2 px-4 bg-primary text-white rounded-lg font-bold hover:bg-emerald-600 transition-colors">Ver Reporte</button>
-                                      <button onClick={() => onActivateFeria(feria)} disabled={activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria} className={`w-full py-2 px-4 rounded-lg font-bold transition-colors ${activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-secondary text-white hover:bg-amber-600'}`}>Activar</button>
-                                      <button onClick={() => onDeleteFeria(feria.id)} className="w-full py-2 px-4 bg-accent text-white rounded-lg font-bold hover:bg-red-600 transition-colors">Eliminar</button>
+                                      <button onClick={() => { audioService.playClick(); onActivateFeria(feria); }} disabled={activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria} className={`w-full py-2 px-4 rounded-lg font-bold transition-colors ${activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-secondary text-white hover:bg-amber-600'}`}>Activar</button>
+                                      <button onClick={() => { audioService.playClick(); onDeleteFeria(feria.id); }} className="w-full py-2 px-4 bg-accent text-white rounded-lg font-bold hover:bg-red-600 transition-colors">Eliminar</button>
                                   </div>
                               </div>
                           ))}
@@ -1333,93 +1468,30 @@
 
       const HistoricalFeriaReportModal = ({ feria, onClose }) => {
           const report = calculateReportSummary(feria.config, feria.sales);
-          const { jsPDF } = window.jspdf;
+          // jsPDF is no longer used for this component, but required for SalesReport
+          // const { jsPDF } = window.jspdf; 
 
-          const generatePdfReport = () => {
-            const doc = new jsPDF();
-            const startY = 20;
-            let currentY = startY;
+          const handleShare = () => {
+            audioService.playClick();
 
-            doc.setFontSize(22);
-            doc.text(`Reporte de Feria: ${feria.config.nombreFeria}`, 14, currentY);
-            currentY += 10;
-            doc.setFontSize(12);
-            doc.text(`Archivada el: ${new Date(feria.archivedAt).toLocaleDateString()} ${new Date(feria.archivedAt).toLocaleTimeString()}`, 14, currentY);
-            currentY += 10;
-            doc.text(`Inicio: ${new Date(feria.config.fechaInicio).toLocaleDateString()} - Fin: ${new Date(feria.config.fechaFin).toLocaleDateString()}`, 14, currentY);
-            currentY += 15;
+            const stockSummary = BEER_STYLES.map((style) => {
+              const initialStock = feria.config.stock?.[style] || 0;
+              const consumed = report.consumptionByStyle?.[style] || 0;
+              const remaining = Math.max(0, initialStock - consumed);
+              return `${style}: ${remaining.toFixed(1)}L / ${initialStock}L`;
+            }).join('\n');
 
-            // Summary
-            doc.setFontSize(16);
-            doc.text("Resumen Financiero", 14, currentY);
-            currentY += 7;
-            doc.setFontSize(12);
-            doc.text(`Recaudación Total: $${report.montoTotalGeneral.toLocaleString()}`, 14, currentY);
-            currentY += 7;
-            doc.text(`Ventas Digitales: $${report.montoTotalDigital.toLocaleString()}`, 14, currentY);
-            currentY += 7;
-            doc.text(`Ventas Efectivo: $${report.montoTotalBillete.toLocaleString()}`, 14, currentY);
-            currentY += 7;
-            doc.text(`Total Pintas: ${report.totalPintas} P`, 14, currentY);
-            currentY += 7;
-            doc.text(`Total Litros: ${report.totalLitros} L`, 14, currentY);
-            currentY += 15;
-
-            // Stock
-            doc.setFontSize(16);
-            doc.text("Resumen de Stock (Litros)", 14, currentY);
-            currentY += 7;
-
-            const stockData = BEER_STYLES.map(style => {
-                const initial = feria.config.stock ? (feria.config.stock[style] || 0) : 0;
-                const consumed = report.consumptionByStyle ? (report.consumptionByStyle[style] || 0) : 0;
-                const remaining = Math.max(0, initial - consumed);
-                return [style, `${initial}L`, `${consumed.toFixed(1)}L`, `${remaining.toFixed(1)}L`];
-            });
-
-            doc.autoTable({
-                startY: currentY,
-                head: [['Estilo', 'Stock Inicial', 'Consumido', 'Restante']],
-                body: stockData,
-                styles: { fontSize: 10, cellPadding: 2 },
-                headStyles: { fillColor: [16, 185, 129], textColor: 255 }, // Primary color
-                margin: { left: 14, right: 14 },
-                didDrawPage: function(data) {
-                    currentY = data.cursor.y; // Update currentY after table
-                }
-            });
-            currentY = doc.autoTable.previous.finalY + 15; // Update currentY after table
-
-            // Sales list (optional, can be very long)
-            if (feria.sales && feria.sales.length > 0) {
-              doc.addPage();
-              currentY = startY;
-              doc.setFontSize(16);
-              doc.text("Detalle de Ventas", 14, currentY);
-              currentY += 7;
-
-              const salesDetail = feria.sales.map(sale => {
-                  const itemsSummary = sale.items ? sale.items.map(item => `${item.quantity} ${item.unit} ${item.style}`).join(', ') : `${sale.cantidadUnidades} ${sale.tipoUnidad}`;
-                  return [
-                      new Date(sale.fechaVenta).toLocaleString(),
-                      itemsSummary,
-                      `$${sale.montoTotal.toLocaleString()}`,
-                      sale.tipoPago,
-                      sale.usuarioVenta
-                  ];
-              });
-
-              doc.autoTable({
-                  startY: currentY,
-                  head: [['Fecha', 'Ítems', 'Monto', 'Pago', 'Usuario']],
-                  body: salesDetail,
-                  styles: { fontSize: 8, cellPadding: 1 },
-                  headStyles: { fillColor: [245, 158, 11], textColor: 255 }, // Secondary color
-                  margin: { left: 14, right: 14 },
-              });
-            }
-
-            doc.save(`reporte-${feria.config.nombreFeria}.pdf`);
+            const message =
+              `*REPORTE HISTÓRICO: ${feria.config.nombreFeria}*\n` +
+              `_Archivada el: ${new Date(feria.archivedAt).toLocaleDateString()} ${new Date(feria.archivedAt).toLocaleTimeString()}_\n\n` +
+              `💰 *Recaudación Total: $${report.montoTotalGeneral.toLocaleString()}*\n` +
+              `💳 Digital: $${report.montoTotalDigital.toLocaleString()}\n` +
+              `💵 Efectivo: $${report.montoTotalBillete.toLocaleString()}\n\n` +
+              `🍺 *Volumen Total: ${report.totalPintas} P / ${report.totalLitros} L*\n\n` +
+              `*Detalle de Stock:*\n` +
+              `${stockSummary}`;
+              
+            window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
           };
 
           return (
@@ -1476,27 +1548,27 @@
                       </div>
 
                       <div className="flex gap-4 pt-4">
-                          <button onClick={() => { audioService.playClick(); generatePdfReport(); }} className="flex-1 btn-3d bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zm4 11H7v-2h10v2zm0-4H7v-2h10v2z"/></svg>
-                              Descargar Reporte (PDF)
-                          </button>
-                          <button onClick={onClose} className="flex-1 btn-3d bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold py-4 rounded-xl hover:bg-red-100 hover:text-red-600 transition-colors">Cerrar</button>
+                          <button onClick={handleShare} className="flex-1 btn-3d bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-500/30 flex items-center justify-center gap-2">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                          Compartir por WhatsApp
+                      </button>
+                      <button onClick={onClose} className="flex-1 btn-3d bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold py-4 rounded-xl hover:bg-red-100 hover:text-red-600 transition-colors">Cerrar</button>
                       </div>
                   </div>
               </div>
           );
       };
 
-      // --- Main App Component (from index.tsx) ---
+      // --- Main App Component (from App.tsx) ---
       function App() {
-        const [userRole, setUserRole] = React.useState(null); // Removed explicit type string | null
-        const [activeFeriaConfig, setActiveFeriaConfig] = React.useState(null); // Removed explicit type FeriaConfig | null
-        const [activeSales, setActiveSales] = React.useState([]); // Removed explicit type Sale[]
-        const [feriaHistory, setFeriaHistory] = React.useState([]); // Removed explicit type FeriaHistory[]
+        const [userRole, setUserRole] = React.useState(null); 
+        const [activeFeriaConfig, setActiveFeriaConfig] = React.useState(null); 
+        const [activeSales, setActiveSales] = React.useState([]); 
+        const [feriaHistory, setFeriaHistory] = React.useState([]); 
         const [loading, setLoading] = React.useState(true);
 
         React.useEffect(() => {
-            const unsubscribe = auth.onAuthStateChanged(async (user) => { // Removed explicit type any
+            const unsubscribe = auth.onAuthStateChanged(async (user) => { 
                 if (user) {
                     const idTokenResult = await user.getIdTokenResult();
                     setUserRole(idTokenResult.claims.role || null);
