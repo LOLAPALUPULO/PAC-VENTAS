@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>LOLA VENTAS</title>
     <!-- Tailwind CSS CDN -->
-    <script type="text/javascript" src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <!-- Tone.js CDN for generative audio -->
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <!-- Custom Tailwind configuration -->
@@ -141,21 +141,25 @@
             background: rgba(85, 85, 85, 0.8);
         }
     </style>
+    <!-- Load React and ReactDOM as global variables from CDNs (Production versions) -->
+    <script type="text/javascript" crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script type="text/javascript" crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Include Babel for client-side JSX compilation -->
+    <script type="text/javascript" src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- jsPDF for client-side PDF generation -->
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- jsPDF-AutoTable plugin for easy table generation -->
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <!-- Chart.js for graphs (if needed, otherwise remove) -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<script type="importmap">
-{
-  "imports": {
-    "firebase/": "https://esm.sh/firebase@^12.7.0/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
-  }
-}
-</script>
+    <!-- Firebase SDKs -->
+    <script type="text/javascript" src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+    
+    <!-- NO <link rel="stylesheet" href="/index.css"> - Tailwind is used directly -->
+    <!-- NO <script type="importmap"> - Using global React/ReactDOM -->
 <link rel="stylesheet" href="/index.css">
 </head>
 <body class="bg-lightbg dark:bg-darkbg text-textdark dark:text-textlight min-h-screen font-sans overflow-x-hidden selection:bg-primary selection:text-white">
@@ -167,8 +171,1393 @@
 
     <div id="root" class="w-full min-h-screen flex flex-col"></div>
     
-    <!-- Main React Application Entry Point -->
-    <script type="module" src="./index.tsx"></script>
+    <script type="text/babel">
+      // --- Firebase Configuration ---
+      const firebaseConfig = {
+        apiKey: "AIzaSyDx1qGAu862CxjtbYuj6JAiLX9flvukDw4", // IMPORTANT: Ensure this is YOUR actual Firebase API key
+        authDomain: "lolaventasonline.firebaseapp.com",
+        projectId: "lolaventasonline", // CORRECTED: Was 'lolaventaventasonline'
+        storageBucket: "lolaventasonline.firebasestorage.app",
+        messagingSenderId: "323355322280",
+        appId: "1:323355322280:web:b9a78336de7da6af519f9d"
+      };
+
+      if (!firebase.apps.length) {
+        try {
+            firebase.initializeApp(firebaseConfig);
+            console.log("Firebase initialized successfully.");
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
+        }
+      }
+      const auth = firebase.auth();
+      const db = firebase.firestore();
+
+      // --- Types (adapted from types.ts) ---
+      // Converted enums to plain JS objects
+      const TipoUnidad = {
+        Pinta: 'Pinta',
+        Litro: 'Litro',
+        Mixed: 'Mixto',
+      };
+
+      const TipoPago = {
+        Digital: '$ Digital',
+        Billete: '$ Billete',
+      };
+
+      // Interfaces are for TypeScript only, removed for client-side Babel
+      // interface SaleItem { style: string; unit: TipoUnidad; quantity: number; }
+      // interface Sale { ... }
+      // interface StockConfig { [style: string]: number; }
+      // interface FeriaConfig { ... }
+      // interface FeriaHistory { ... }
+
+      // --- Constants (from constants.ts) ---
+      const BEER_STYLES = [
+        'S.IPA', 
+        'SCOTISH', 
+        'GOLDEN', 
+        'HONEY', 
+        'IPA', 
+        'PORTER'
+      ];
+
+      const ADMIN_ROLE = 'admin';
+      const SALES_ROLE = 'sales';
+      
+      const ENC_ADMIN_EMAIL = 'bG9sYXBhbHVwdWxvQGdtYWlsLmNvbQ==';
+      const ENC_ADMIN_PASS = 'cmVnaXMxMjM=';
+      const ENC_SALES_EMAIL = 'Y2JvbHVkYXNAZ21haWwuY29t'; // CORRECTED: Was 'Y2JvbHVkYXNAZ21haWwub20='
+      const ENC_SALES_PASS = 'bG9sMTIzNDU=';
+      
+      const ENC_TRIGGER_ADMIN = 'cmVnaXM='; 
+      const ENC_TRIGGER_SALES = 'bG9s';
+
+      const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7284f6b59b63004079/lola.svg';
+
+      // --- Audio Service using Tone.js (from services/audioService.ts) ---
+      const audioService = {
+          initialized: false,
+          clickSynth: null,
+          productSynth: null,
+          polySynth: null,
+          
+          init: async () => {
+              if (audioService.initialized) return true; // Already initialized, return success
+              
+              try {
+                  await Tone.start();
+                  
+                  audioService.clickSynth = new Tone.Synth({
+                      oscillator: { type: "sine" },
+                      envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 }
+                  }).toDestination();
+                  audioService.clickSynth.volume.value = -20;
+
+                  audioService.productSynth = new Tone.Synth({
+                      oscillator: { type: "triangle" },
+                      envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+                  }).toDestination();
+                  audioService.productSynth.volume.value = -5;
+
+                  audioService.polySynth = new Tone.PolySynth(Tone.Synth, {
+                      oscillator: { type: "triangle" },
+                      envelope: { attack: 0.02, decay: 0.1, sustain: 0.1, release: 1 }
+                  }).toDestination();
+                  audioService.polySynth.volume.value = -12;
+
+                  audioService.initialized = true;
+                  return true; // Successfully initialized
+              } catch (error) {
+                  console.error("Error al inicializar el servicio de audio:", error);
+                  audioService.initialized = false; // Ensure flag is false on error
+                  return false; // Initialization failed
+              }
+          },
+
+          playClick: () => {
+              if (!audioService.initialized) audioService.init(); // Attempt init if not ready
+              if (audioService.initialized && audioService.clickSynth) audioService.clickSynth.triggerAttackRelease("C6", "32n");
+          },
+
+          playAdd: () => {
+              if (!audioService.initialized) audioService.init();
+              if (audioService.initialized && audioService.productSynth) audioService.productSynth.triggerAttackRelease("E5", "16n");
+          },
+
+          playSub: () => {
+              if (!audioService.initialized) audioService.init();
+              if (audioService.initialized && audioService.productSynth) audioService.productSynth.triggerAttackRelease("C4", "16n");
+          },
+
+          playSuccess: () => {
+              if (!audioService.initialized) audioService.init();
+              if (audioService.initialized && audioService.polySynth) {
+                  audioService.polySynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "8n");
+              }
+          },
+
+          playError: () => {
+               if (!audioService.initialized) audioService.init();
+               if (audioService.initialized && audioService.productSynth) audioService.productSynth.triggerAttackRelease("A2", "8n");
+          }
+      };
+
+      // --- API Service and Report Calculation (from services/apiService.ts) ---
+      const calculateReportSummary = (feriaConfig, sales) => {
+          let totalPintas = 0;
+          let totalLitros = 0;
+          let montoTotalGeneral = 0;
+          let montoTotalDigital = 0;
+          let montoTotalBillete = 0;
+          
+          // Consumption tracking (Liters)
+          const consumptionByStyle = {}; // Using plain JS object
+          if (feriaConfig.stock) {
+              Object.keys(feriaConfig.stock).forEach(style => {
+                  consumptionByStyle[style] = 0;
+              });
+          }
+
+          sales.forEach((sale) => {
+              montoTotalGeneral += sale.montoTotal;
+              if (sale.tipoPago === TipoPago.Digital) {
+                  montoTotalDigital += sale.montoTotal;
+              } else {
+                  montoTotalBillete += sale.montoTotal;
+              }
+
+              // Backward compatibility for old sales without 'items'
+              if (!sale.items || sale.items.length === 0) {
+                  if (sale.tipoUnidad === TipoUnidad.Pinta) totalPintas += sale.cantidadUnidades;
+                  else if (sale.tipoUnidad === TipoUnidad.Litro) totalLitros += sale.cantidadUnidades;
+                  else if (sale.tipoUnidad === TipoUnidad.Mixed) {
+                      totalPintas += sale.cantidadUnidades / 2;
+                      totalLitros += sale.cantidadUnidades / 2;
+                  }
+              } else {
+                  // New logic with style tracking
+                  sale.items.forEach(item => {
+                      if (item.unit === TipoUnidad.Pinta) {
+                          totalPintas += item.quantity;
+                          // Calculate consumption: (473ml + Waste) converted to Liters
+                          // Waste is in ML
+                          const wasteL = (feriaConfig.wastePerPint || 0) / 1000;
+                          const volumeL = 0.473 + wasteL;
+                          if (consumptionByStyle[item.style] !== undefined) {
+                              consumptionByStyle[item.style] += (item.quantity * volumeL);
+                          }
+                      } else if (item.unit === TipoUnidad.Litro) {
+                          totalLitros += item.quantity;
+                          if (consumptionByStyle[item.style] !== undefined) {
+                              consumptionByStyle[item.style] += item.quantity; // 1 Liter
+                          }
+                      }
+                  });
+              }
+          });
+
+          return {
+              totalPintas: Math.round(totalPintas),
+              totalLitros: Math.round(totalLitros),
+              montoTotalGeneral: Math.round(montoTotalGeneral),
+              montoTotalDigital: Math.round(montoTotalDigital),
+              montoTotalBillete: Math.round(montoTotalBillete),
+              consumptionByStyle
+          };
+      };
+
+      const apiService = {
+          login: async (email, pass) => {
+              try {
+                  const userCredential = await auth.signInWithEmailAndPassword(email, pass);
+                  const idTokenResult = await userCredential.user.getIdTokenResult(true);
+                  const role = idTokenResult.claims.role || null;
+                  return { success: true, role: role, username: email };
+              } catch (error) {
+                  let message = 'Error de autenticación.';
+                  if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+                      message = 'Credenciales inválidas.';
+                  } else if (error.code === 'auth/invalid-email') {
+                      message = 'Email inválido.';
+                  }
+                  throw new Error(message);
+              }
+          },
+          logout: async () => {
+              await auth.signOut();
+              return true;
+          },
+          saveActiveFeriaConfig: async (config) => {
+              await db.collection('settings').doc('activeFeria').set(config);
+              return true;
+          },
+          addSale: async (sale) => {
+              await db.collection('activeSales').add(sale);
+              return true;
+          },
+          archiveCurrentFeria: async (feriaData) => {
+              const batch = db.batch();
+              const existingFeriaQuery = await db.collection('feriaHistory')
+                  .where('config.nombreFeria', '==', feriaData.config.nombreFeria).limit(1).get();
+              let historyRef = existingFeriaQuery.empty ? db.collection('feriaHistory').doc() : existingFeriaQuery.docs[0].ref;
+
+              const cleanData = JSON.parse(JSON.stringify(feriaData));
+              batch.set(historyRef, cleanData);
+
+              const activeFeriaRef = db.collection('settings').doc('activeFeria');
+              batch.delete(activeFeriaRef); // Simplest reset
+
+              const activeSalesSnapshot = await db.collection('activeSales').get();
+              const BATCH_SIZE = 400;
+              for (let i = 0; i < activeSalesSnapshot.docs.length; i += BATCH_SIZE) {
+                  const chunkBatch = db.batch();
+                  activeSalesSnapshot.docs.slice(i, i + BATCH_SIZE).forEach((doc) => chunkBatch.delete(doc.ref));
+                  await chunkBatch.commit();
+              }
+              await batch.commit();
+              return true;
+          },
+          activateHistoricalFeria: async (feriaToActivate) => {
+              // Implementation kept same as original logic but typed properly where needed
+              const activeConfigDoc = await db.collection('settings').doc('activeFeria').get();
+              if (activeConfigDoc.exists && activeConfigDoc.data().nombreFeria) {
+                  const currentConfig = activeConfigDoc.data();
+                  const currentSalesSnap = await db.collection('activeSales').get();
+                  const currentSales = currentSalesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+                  const report = calculateReportSummary(currentConfig, currentSales);
+                  const feriaDataToArchive = JSON.parse(JSON.stringify({ config: currentConfig, sales: currentSales, reportSummary: report, archivedAt: new Date().toISOString() }));
+                  
+                  const existingFeriaQuery = await db.collection('feriaHistory').where('config.nombreFeria', '==', currentConfig.nombreFeria).limit(1).get();
+                  let historyRef = existingFeriaQuery.empty ? db.collection('feriaHistory').doc() : existingFeriaQuery.docs[0].ref;
+                  await historyRef.set(feriaDataToArchive);
+
+                  const deleteDocs = currentSalesSnap.docs;
+                  const BATCH_SIZE = 400;
+                  for (let i = 0; i < deleteDocs.length; i += BATCH_SIZE) {
+                      const batch = db.batch();
+                      deleteDocs.slice(i, i + BATCH_SIZE).forEach((doc) => batch.delete(doc.ref));
+                      await batch.commit();
+                  }
+              } else {
+                   const orphanSales = await db.collection('activeSales').get();
+                   const deleteDocs = orphanSales.docs;
+                   const BATCH_SIZE = 400;
+                   for (let i = 0; i < deleteDocs.length; i += BATCH_SIZE) {
+                      const batch = db.batch();
+                      deleteDocs.slice(i, i + BATCH_SIZE).forEach((doc) => batch.delete(doc.ref));
+                      await batch.commit();
+                  }
+              }
+
+              const cleanConfig = JSON.parse(JSON.stringify(feriaToActivate.config));
+              await db.collection('settings').doc('activeFeria').set(cleanConfig);
+
+              const salesToRestore = feriaToActivate.sales || [];
+              const BATCH_SIZE = 400;
+              for (let i = 0; i < salesToRestore.length; i += BATCH_SIZE) {
+                  const batch = db.batch();
+                  salesToRestore.slice(i, i + BATCH_SIZE).forEach((sale) => {
+                      const newSaleRef = db.collection('activeSales').doc();
+                      const { id, ...saleData } = sale;
+                      batch.set(newSaleRef, saleData);
+                  });
+                  await batch.commit();
+              }
+              return true;
+          },
+          deleteHistoricalFeria: async (feriaId) => {
+              await db.collection('feriaHistory').doc(feriaId).delete();
+              return true;
+          },
+      };
+
+      // --- Components (from App.tsx) ---
+      // Removed TypeScript interface `CartItem` (kept for reference in comment if desired)
+      // interface CartItem { style: string; unit: TipoUnidad; quantity: number; }
+
+      const AuthScreen = ({ onLogin }) => {
+        const [usernameInput, setUsernameInput] = React.useState('');
+        const [error, setError] = React.useState(null);
+        const [loading, setLoading] = React.useState(false);
+
+        const normalizedInput = usernameInput.trim().toLowerCase();
+        const isAdminInput = normalizedInput === atob(ENC_TRIGGER_ADMIN);
+        const isSalesInput = normalizedInput === atob(ENC_TRIGGER_SALES);
+
+        React.useEffect(() => {
+            const initAudio = () => audioService.init();
+            window.addEventListener('click', initAudio, { once: true });
+            return () => window.removeEventListener('click', initAudio);
+        }, []);
+
+        const doLogin = async (email, password, expectedRole) => {
+            audioService.playClick();
+            setLoading(true);
+            setError(null);
+            try {
+                const result = await apiService.login(email, password);
+                if (result.success) {
+                     if (expectedRole && result.role !== expectedRole) throw new Error(`Sin permisos de ${expectedRole}.`);
+                     onLogin(result.role, result.username);
+                }
+            } catch (err) {
+                setError(err.message || 'Error de login.');
+                audioService.playError();
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen w-full bg-lightbg dark:bg-darkbg p-4 transition-colors duration-300 relative overflow-hidden">
+            <div className="w-full max-w-md animate-pop-in flex flex-col items-center relative z-10 glass p-8 rounded-3xl shadow-2xl border border-white/20">
+                <div className="mb-10 text-center flex flex-col items-center">
+                    <div className="relative group">
+                        <div className="absolute inset-0 bg-primary/30 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <img src={LOLA_SVG_URL} alt="LOLA Logo" className="w-48 h-48 mb-4 animate-float filter drop-shadow-xl relative z-10" />
+                    </div>
+                    
+                    <h2 className="text-6xl md:text-7xl font-display text-gray-800 dark:text-gray-100 mt-2 tracking-widest drop-shadow-md">VENTAS</h2>
+                    <p className="text-primary mt-2 text-xl font-display tracking-wider">(on line)</p>
+                </div>
+                
+                <div className="w-full mb-8 relative">
+                    <input
+                        type="text"
+                        placeholder="INGRESAR USUARIO"
+                        value={usernameInput}
+                        onFocus={() => audioService.playClick()}
+                        onChange={(e) => { setUsernameInput(e.target.value); setError(null); }}
+                        disabled={loading}
+                        className="w-full p-5 bg-white/80 dark:bg-surfaceDark/80 backdrop-blur border-2 border-transparent focus:border-primary text-gray-800 dark:text-gray-100 rounded-2xl shadow-inner text-center text-2xl font-bold outline-none transition-all placeholder-gray-400 dark:placeholder-gray-500 focus:ring-4 focus:ring-primary/20"
+                    />
+                </div>
+
+                {loading && <div className="spinner mb-6 border-t-4 border-primary"></div>}
+                {error && <p className="text-accent font-bold mb-6 text-center animate-pulse bg-red-100 dark:bg-red-900/30 py-2 px-4 rounded-lg">{error}</p>}
+
+                <div className="w-full space-y-4">
+                   {isAdminInput && (
+                       <button onClick={() => doLogin(atob(ENC_ADMIN_EMAIL), atob(ENC_ADMIN_PASS), ADMIN_ROLE)} disabled={loading} className="btn-3d w-full py-5 rounded-2xl font-bold text-xl text-white bg-gradient-to-r from-primary to-primaryDark shadow-3d-primary active:shadow-3d-primary-active transform hover:-translate-y-1 transition-transform">
+                           ENTRAR COMO ADMINISTRADOR
+                       </button>
+                   )}
+                   {isSalesInput && (
+                       <button onClick={() => doLogin(atob(ENC_SALES_EMAIL), atob(ENC_SALES_PASS), SALES_ROLE)} disabled={loading} className="btn-3d w-full py-5 rounded-2xl font-bold text-xl text-white bg-gradient-to-r from-secondary to-secondaryDark shadow-3d-secondary active:shadow-3d-secondary-active transform hover:-translate-y-1 transition-transform">
+                           ENTRAR COMO VENDEDOR
+                       </button>
+                   )}
+                </div>
+            </div>
+          </div>
+        );
+      };
+
+      const SalesTPV = ({ activeFeriaConfig, onAddSale, onLogout }) => {
+        // Removed explicit TypeScript type for CartItem in useState
+        const [styleStaging, setStyleStaging] = React.useState({});
+        const [cart, setCart] = React.useState([]);
+        
+        const [activeButton, setActiveButton] = React.useState(null); 
+        const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+        const [pendingOrders, setPendingOrders] = React.useState([]);
+        const [showSuccess, setShowSuccess] = React.useState(false);
+        const [showPendingModal, setShowPendingModal] = React.useState(false);
+
+        React.useEffect(() => {
+          let storedPending = [];
+          try {
+              const rawStoredPending = localStorage.getItem('pendingOrders');
+              if (rawStoredPending) {
+                  storedPending = JSON.parse(rawStoredPending);
+              }
+          } catch (e) {
+              console.error("Error al parsear órdenes pendientes de localStorage:", e);
+              localStorage.removeItem('pendingOrders'); // Clear corrupted data
+          }
+          setPendingOrders(storedPending);
+          
+          const handleOnline = () => setIsOnline(true);
+          const handleOffline = () => setIsOnline(false);
+          
+          window.addEventListener('online', handleOnline);
+          window.addEventListener('offline', handleOffline);
+          return () => {
+              window.removeEventListener('online', handleOnline);
+              window.removeEventListener('offline', handleOffline);
+          };
+        }, []);
+
+        React.useEffect(() => {
+            if (isOnline && pendingOrders.length > 0) {
+                const syncOrders = async () => {
+                    const ordersToSync = [...pendingOrders];
+                    setPendingOrders([]); 
+                    localStorage.removeItem('pendingOrders');
+                    for (const sale of ordersToSync) {
+                        try { await onAddSale(sale); } catch (e) { // Use onAddSale prop
+                             console.error("Sync failed for item", e); 
+                        }
+                    }
+                };
+                syncOrders();
+            }
+        }, [isOnline, pendingOrders, onAddSale]); // Add onAddSale to dependencies
+
+        const triggerVisualFeedback = (buttonId) => {
+            setActiveButton(buttonId);
+            setTimeout(() => setActiveButton(null), 150);
+        };
+
+
+        // Calculate Totals based on Cart
+        const totalMoney = cart.reduce((acc, item) => {
+            const price = item.unit === TipoUnidad.Pinta ? activeFeriaConfig.valorPinta : activeFeriaConfig.valorLitro;
+            return acc + (price * item.quantity);
+        }, 0);
+
+        const cartHasItems = cart.length > 0;
+        const hasStagingItems = Object.values(styleStaging).some((qty) => qty > 0);
+
+        // Aggregated cart items for display
+        const displayCart = React.useMemo(() => {
+            const aggregated = {}; // Removed explicit type
+            cart.forEach(item => {
+                const key = `${item.style}-${item.unit}`;
+                if (aggregated[key]) {
+                    aggregated[key].quantity += item.quantity;
+                } else {
+                    aggregated[key] = { ...item };
+                }
+            });
+            return Object.values(aggregated);
+        }, [cart]);
+
+        // --- Handlers ---
+
+        const handleStyleIncrement = (style) => {
+            audioService.playClick();
+            setStyleStaging(prev => ({
+                ...prev,
+                [style]: (prev[style] || 0) + 1
+            }));
+        };
+
+        const handleStyleDecrement = (style, e) => {
+            e.stopPropagation();
+            audioService.playSub();
+            setStyleStaging(prev => {
+                const current = prev[style] || 0;
+                if (current <= 0) return prev;
+                if (current === 1) {
+                    const { [style]: _, ...rest } = prev;
+                    return rest;
+                }
+                return { ...prev, [style]: current - 1 };
+            });
+        };
+
+        const handleAddToCart = (unit) => {
+            if (!hasStagingItems) return;
+            
+            triggerVisualFeedback(unit === TipoUnidad.Pinta ? 'pinta' : 'litro');
+            audioService.playAdd();
+
+            const newItems = []; // Removed explicit type
+            Object.entries(styleStaging).forEach(([style, val]) => {
+                const qty = val;
+                if (qty > 0) {
+                    newItems.push({ style, unit, quantity: qty });
+                }
+            });
+
+            setCart(prev => [...prev, ...newItems]);
+            // NOTE: Clear styleStaging after adding to cart, as requested ("no sumen cantidades")
+            setStyleStaging({}); 
+        };
+
+        const handleRemoveFromCart = (unit) => {
+            if (!hasStagingItems) return;
+            
+            triggerVisualFeedback(unit === TipoUnidad.Pinta ? 'pinta' : 'litro');
+            audioService.playSub();
+
+            setCart(prev => {
+                let newCart = [...prev];
+                Object.entries(styleStaging).forEach(([style, val]) => {
+                   let qtyToRemove = val;
+                   
+                   // Iterate backwards to find items to remove/decrement
+                   for (let i = newCart.length - 1; i >= 0; i--) {
+                       if (qtyToRemove <= 0) break;
+                       
+                       if (newCart[i].style === style && newCart[i].unit === unit) {
+                           if (newCart[i].quantity > qtyToRemove) {
+                               newCart[i].quantity -= qtyToRemove;
+                               qtyToRemove = 0;
+                           } else {
+                               qtyToRemove -= newCart[i].quantity;
+                               newCart.splice(i, 1);
+                           }
+                       }
+                   }
+                });
+                return newCart;
+            });
+            // Clear styleStaging after removing from cart as well
+            setStyleStaging({});
+        };
+
+        const handleClearCart = () => {
+            audioService.playSub(); // Using 'sub' sound for clearing
+            setCart([]);
+            setStyleStaging({});
+        };
+
+        const handleRegisterSale = async (tipoPago) => {
+          if (!cartHasItems) return;
+          
+          audioService.playSuccess();
+
+          let totalPintaCount = 0;
+          let totalLitroCount = 0;
+          cart.forEach(i => {
+              if(i.unit === TipoUnidad.Pinta) totalPintaCount += i.quantity;
+              if(i.unit === TipoUnidad.Litro) totalLitroCount += i.quantity;
+          });
+
+          const newSale = { // Removed explicit type 'Sale'
+            fechaVenta: new Date().toISOString(),
+            items: cart,
+            tipoUnidad: (totalPintaCount > 0 && totalLitroCount > 0) ? TipoUnidad.Mixed : (totalPintaCount > 0 ? TipoUnidad.Pinta : TipoUnidad.Litro),
+            cantidadUnidades: totalPintaCount + totalLitroCount,
+            montoTotal: totalMoney,
+            tipoPago: tipoPago,
+            usuarioVenta: auth.currentUser ? (auth.currentUser.email || 'user') : 'offline_user',
+          };
+
+          if (isOnline) {
+              onAddSale(newSale); // Use onAddSale prop
+          } else {
+             const updatedPending = [...pendingOrders, { ...newSale, id: `temp-${Date.now()}` }];
+             setPendingOrders(updatedPending);
+             localStorage.setItem('pendingOrders', JSON.stringify(updatedPending));
+          }
+
+          setCart([]);
+          setStyleStaging({}); // Clear selection only on final sale
+          triggerVisualFeedback(tipoPago === TipoPago.Digital ? 'digital' : 'billete');
+          
+          setShowSuccess(true);
+          setTimeout(() => setShowSuccess(false), 2000);
+        };
+
+
+        if (!activeFeriaConfig) {
+          return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-lightbg dark:bg-darkbg p-6 relative overflow-hidden">
+              <div className="absolute inset-0 z-0 bg-gradient-to-b from-transparent to-gray-200 dark:to-black opacity-20"></div>
+              <h2 className="text-6xl font-display font-bold text-gray-400 mb-8 opacity-50">CERRADO</h2>
+              <p className="text-xl text-gray-500 mb-8 z-10">No hay feria activa.</p>
+              <button onClick={() => { audioService.playClick(); onLogout(); }} className="py-3 px-8 bg-surfaceDark text-white rounded-full hover:bg-black transition-colors shadow-lg z-10">Salir</button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex flex-col min-h-screen bg-lightbg dark:bg-darkbg overflow-hidden relative">
+            {/* Success Overlay */}
+            {showSuccess && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in">
+                    <div className="bg-white dark:bg-surfaceDark border-4 border-primary rounded-3xl w-80 h-80 flex flex-col items-center justify-center shadow-glow-primary animate-pop-in p-4 text-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-primary/10 animate-pulse"></div>
+                        {isOnline ? (
+                             <div className="relative z-10">
+                                 <svg className="w-24 h-24 text-primary mb-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                                 <span className="text-4xl md:text-5xl font-extrabold text-primary tracking-widest drop-shadow-sm">CARGADO!</span>
+                             </div>
+                        ) : (
+                             <React.Fragment>
+                                <svg className="w-20 h-20 text-secondary mb-4 animate-bounce relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" /></svg>
+                                <span className="text-3xl font-bold text-secondary tracking-widest leading-none mb-2 relative z-10">GUARDADO OFFLINE</span>
+                                <span className="text-lg text-gray-400 font-medium relative z-10">PENDIENTE DE ENVIO</span>
+                             </React.Fragment>
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {/* Pending Orders Modal */}
+            {showPendingModal && (
+                <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
+                    <div className="w-full max-w-lg bg-surfaceDark border border-gray-600 rounded-2xl flex flex-col max-h-[80vh] shadow-2xl animate-slide-up">
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900/50">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_red]"></span>
+                                PENDIENTES DE ENVIO
+                            </h3>
+                            <button onClick={() => { audioService.playClick(); setShowPendingModal(false); }} className="text-gray-400 hover:text-white text-2xl transition-colors">&times;</button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 space-y-2">
+                            {pendingOrders.map((order, idx) => (
+                                <div key={idx} className="bg-gray-800 p-3 rounded-lg flex justify-between items-center border border-gray-700 hover:border-gray-500 transition-colors">
+                                    <div>
+                                        <div className="text-primary font-bold text-lg">${order.montoTotal}</div>
+                                        <div className="text-xs text-gray-400">{new Date(order.fechaVenta).toLocaleTimeString()}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-sm font-medium text-white">{order.tipoUnidad} ({order.cantidadUnidades})</div>
+                                        <div className="text-xs text-secondary uppercase">{order.tipoPago}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-4 bg-gray-900 rounded-b-2xl border-t border-gray-700">
+                            <button onClick={() => { audioService.playClick(); setShowPendingModal(false); }} className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-all">CERRAR</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Header */}
+            <div className={`flex justify-between items-center p-3 shadow-lg z-20 transition-all duration-300 backdrop-blur-md ${isOnline ? 'bg-white/90 dark:bg-surfaceDark/90' : 'bg-red-900/90 border-b-2 border-red-500'}`}>
+              <div>
+                  <div className="flex items-center gap-2 group cursor-pointer">
+                       <img src={LOLA_SVG_URL} alt="Logo" className="h-10 w-10 animate-pulse group-hover:scale-110 transition-transform duration-300 drop-shadow-md" />
+                       <h1 className="text-2xl font-display text-gray-800 dark:text-white leading-tight group-hover:text-primary transition-colors">VENTAS</h1>
+                  </div>
+                  <p className="text-xl md:text-2xl text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider leading-none mt-1 drop-shadow-sm">{activeFeriaConfig.nombreFeria}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                  {isOnline ? (
+                      <div className="bg-green-500/10 border border-green-500 text-green-600 dark:text-green-400 text-xs px-3 py-1.5 rounded-full font-bold flex items-center gap-1 shadow-glow-primary">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        ONLINE
+                      </div>
+                  ) : (
+                      <button 
+                        onClick={() => { audioService.playClick(); setShowPendingModal(true); }}
+                        className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-full font-bold animate-pulse hover:bg-red-600 transition-colors flex items-center gap-1 shadow-lg border-2 border-white/20"
+                      >
+                        <span className="w-2 h-2 bg-white rounded-full"></span>
+                        OFFLINE ({pendingOrders.length})
+                      </button>
+                  )}
+                  
+                  <button onClick={() => { audioService.playClick(); onLogout(); }} className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white rounded-lg hover:bg-red-100 hover:text-red-500 transition-all active:scale-95 shadow-sm">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                  </button>
+              </div>
+            </div>
+
+            {/* Style Selector Section - NOW EXPANDED and ADJUSTING AUTOMATICALLY */}
+            <div className="px-3 pt-3 pb-2 z-10 flex-grow overflow-y-auto">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 h-full auto-rows-fr">
+                  {BEER_STYLES.map(style => {
+                      const count = (styleStaging[style]) || 0;
+                      return (
+                          <div key={style} className={`relative rounded-2xl shadow-sm transition-all duration-200 overflow-hidden flex flex-col ${count > 0 ? 'ring-2 ring-primary transform scale-[1.02] z-10' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:border-primary'}`}>
+                              <button 
+                                  onClick={() => handleStyleIncrement(style)}
+                                  className={`flex-1 w-full flex flex-col items-center justify-center p-2 transition-colors ${count > 0 ? 'bg-primary text-white' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                              >
+                                  <span className="text-xl md:text-3xl font-black uppercase tracking-wider leading-none text-center">{style}</span>
+                                  {count > 0 && <span className="text-5xl font-black mt-1 drop-shadow-md animate-pop-in">{count}</span>}
+                              </button>
+                              
+                              {count > 0 && (
+                                  <button 
+                                      onClick={(e) => handleStyleDecrement(style, e)}
+                                      className="absolute top-0 right-0 p-3 bg-red-600 hover:bg-red-700 text-white transition-colors rounded-bl-3xl shadow-lg z-20 border-l border-b border-red-800 active:scale-95 group"
+                                      aria-label={`Restar ${style}`}
+                                  >
+                                      <div className="flex flex-col items-center">
+                                          <svg className="w-5 h-5 font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4"/></svg>
+                                      </div>
+                                  </button>
+                              )}
+                          </div>
+                      )
+                  })}
+                </div>
+            </div>
+
+            {/* Main Product Area (Size Selection) - NOW SMALLER / FIXED HEIGHT */}
+            <div className="flex flex-row p-3 gap-3 h-36 md:h-44 shrink-0 z-20 bg-lightbg dark:bg-darkbg shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+               {/* Pinta Button */}
+               <div className={`btn-3d flex-1 relative rounded-3xl overflow-hidden transition-all duration-150 ${activeButton === 'pinta' ? 'transform scale-[0.98]' : 'hover:-translate-y-1'}`}>
+                   <button 
+                        onClick={() => handleAddToCart(TipoUnidad.Pinta)} 
+                        disabled={!hasStagingItems}
+                        className={`w-full h-full flex flex-col items-center justify-center text-white shadow-3d-blue active:shadow-3d-blue-active rounded-3xl border-t border-white/20 
+                          ${hasStagingItems ? 'bg-gradient-to-br from-blue-500 to-blue-700 active:from-blue-700 active:to-blue-800' : 'bg-gray-400 cursor-not-allowed opacity-50 grayscale'}`}
+                   >
+                       <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-xl"></div>
+                       
+                       <svg className="w-8 h-8 md:w-12 md:h-12 mb-1 opacity-90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+                           <path d="M5 2l1.2 16.8c.1 1.7 1.5 3.2 3.3 3.2h5c1.8 0 3.2-1.5 3.3-3.2L19 2H5zm12 2l-1 14.5c0 .7-.7 1.5-1.5 1.5h-5c-.8 0-1.5-.8-1.5-1.5L7 4h10z" />
+                           <path d="M6 5h12v2H6z" opacity="0.3"/>
+                       </svg>
+
+                       <span className="text-xl md:text-3xl font-display mb-0 drop-shadow-md">PINTA</span>
+                       <span className="text-sm font-bold opacity-90 bg-black/20 px-3 py-0.5 rounded-full mt-1">${Math.round(activeFeriaConfig.valorPinta)}</span>
+                   </button>
+                   {hasStagingItems && (
+                       <button 
+                          onClick={(e) => {e.stopPropagation(); handleRemoveFromCart(TipoUnidad.Pinta);}} 
+                          className="absolute top-0 right-0 p-3 bg-red-600 hover:bg-red-700 text-white transition-colors rounded-bl-3xl shadow-lg z-20 border-l border-b border-red-800 active:scale-95 group"
+                          aria-label="Restar Pinta"
+                       >
+                           <div className="flex flex-col items-center">
+                               <svg className="w-5 h-5 font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4"/></svg>
+                           </div>
+                       </button>
+                   )}
+               </div>
+
+               {/* Litro Button */}
+               <div className={`btn-3d flex-1 relative rounded-3xl overflow-hidden transition-all duration-150 ${activeButton === 'litro' ? 'transform scale-[0.98]' : 'hover:-translate-y-1'}`}>
+                   <button 
+                        onClick={() => handleAddToCart(TipoUnidad.Litro)} 
+                        disabled={!hasStagingItems}
+                        className={`w-full h-full flex flex-col items-center justify-center text-white shadow-3d-purple active:shadow-3d-purple-active rounded-3xl border-t border-white/20 
+                          ${hasStagingItems ? 'bg-gradient-to-br from-purple-500 to-purple-700 active:from-purple-700 active:to-purple-800' : 'bg-gray-400 cursor-not-allowed opacity-50 grayscale'}`}
+                   >
+                       <div className="absolute top-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mt-16 blur-xl"></div>
+
+                       <svg className="w-10 h-10 md:w-14 md:h-14 mb-1 opacity-90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M19 5h-1v13.5c0 1.9-1.6 3.5-3.5 3.5h-7C5.6 22 4 20.4 4 18.5V5H3v13.5C3 21.5 5.5 24 8.5 24h7c3 0 5.5-2.5 5.5-5.5V5zM6 3h12v2H6z"/>
+                          <path d="M21 8h-2v7h2c1.1 0 2-.9 2-2v-3c0-1.1-.9-2-2-2z"/>
+                       </svg>
+
+                       <span className="text-xl md:text-3xl font-display mb-0 drop-shadow-md">LITRO</span>
+                       <span className="text-sm font-bold opacity-90 bg-black/20 px-3 py-0.5 rounded-full mt-1">${Math.round(activeFeriaConfig.valorLitro)}</span>
+                   </button>
+                   {hasStagingItems && (
+                       <button 
+                          onClick={(e) => {e.stopPropagation(); handleRemoveFromCart(TipoUnidad.Litro);}} 
+                          className="absolute top-0 right-0 p-3 bg-red-600 hover:bg-red-700 text-white transition-colors rounded-bl-3xl shadow-lg z-20 border-l border-b border-red-800 active:scale-95 group"
+                          aria-label="Restar Litro"
+                       >
+                           <div className="flex flex-col items-center">
+                               <svg className="w-5 h-5 font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4"/></svg>
+                           </div>
+                       </button>
+                   )}
+               </div>
+            </div>
+
+            {/* Total Display */}
+            <div className="bg-white/80 dark:bg-black/40 backdrop-blur-sm p-3 text-center border-t border-gray-200 dark:border-gray-800 shadow-[0_-5px_15px_rgba(0,0,0,0.1)] relative z-10">
+                <span className="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-[0.2em] font-bold block mb-1">Total a cobrar</span>
+                
+                {/* Detailed Cart Display */}
+                {displayCart.length > 0 ? (
+                    <div className="mb-2 text-sm text-gray-700 dark:text-gray-300 max-h-16 overflow-y-auto px-2">
+                        {displayCart.map((item, index) => (
+                            <p key={index} className="leading-tight">
+                                {item.style} ({item.quantity} {item.unit === TipoUnidad.Pinta ? 'Pintas' : 'Litros'})
+                            </p>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="mb-2 text-xs text-gray-400 dark:text-gray-500 italic">No hay ítems en el carrito.</p>
+                )}
+
+                <span key={totalMoney} className={`text-6xl font-black transition-all animate-pop inline-block drop-shadow-sm ${cartHasItems ? 'text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-400 filter drop-shadow-sm' : 'text-gray-400 dark:text-gray-600'}`}>${totalMoney}</span>
+                {!hasStagingItems && !cartHasItems && <p className="text-xs text-orange-500 font-bold mt-1 animate-pulse">SELECCIONA UN ESTILO PRIMERO</p>}
+                
+                {/* Cancel All Button */}
+                <button
+                    onClick={handleClearCart}
+                    disabled={!cartHasItems}
+                    className={`mt-3 w-full max-w-[200px] mx-auto py-2 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all 
+                      ${cartHasItems ? 'bg-accent hover:bg-red-600 text-white shadow-md active:translate-y-0.5 active:shadow-sm' : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed opacity-70 shadow-none'}`}
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    VACÍAR CARRITO
+                </button>
+            </div>
+
+            {/* Payment Actions */}
+            <div className="grid grid-cols-2 gap-3 p-3 pb-6 bg-lightbg dark:bg-darkbg h-32 md:h-40 z-10">
+                <button 
+                    onClick={() => handleRegisterSale(TipoPago.Digital)} 
+                    disabled={!cartHasItems}
+                    className={`btn-3d rounded-2xl flex flex-col items-center justify-center text-white transition-all transform ${cartHasItems ? 'bg-gradient-to-r from-primary to-emerald-600 shadow-3d-primary active:shadow-3d-primary-active' : 'bg-gray-300 dark:bg-gray-800 cursor-not-allowed opacity-50 shadow-none'} ${activeButton === 'digital' ? 'ring-2 ring-white scale-95' : ''}`}
+                >
+                    <div className="flex flex-col items-center gap-1">
+                        <svg className="w-10 h-10 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        <span className="text-xl md:text-2xl font-bold uppercase tracking-wide drop-shadow-md">$ DIGITAL</span>
+                    </div>
+                </button>
+                <button 
+                    onClick={() => handleRegisterSale(TipoPago.Billete)} 
+                    disabled={!cartHasItems}
+                    className={`btn-3d rounded-2xl flex flex-col items-center justify-center text-white transition-all transform ${cartHasItems ? 'bg-gradient-to-r from-secondary to-orange-600 shadow-3d-secondary active:shadow-3d-secondary-active' : 'bg-gray-300 dark:bg-gray-800 cursor-not-allowed opacity-50 shadow-none'} ${activeButton === 'billete' ? 'ring-2 ring-white scale-95' : ''}`}
+                >
+                     <div className="flex flex-col items-center gap-1">
+                        <svg className="w-10 h-10 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        <span className="text-xl md:text-2xl font-bold uppercase tracking-wide drop-shadow-md">$ BILLETE</span>
+                    </div>
+                </button>
+            </div>
+          </div>
+        );
+      };
+
+      const AdminDashboard = ({ activeFeriaConfig, activeSales, feriaHistory, onUpdateFeriaConfig, onFinalizeFeria, onActivateHistoricalFeria, onDeleteHistoricalFeria, onLogout }) => {
+          // Initialize view based on whether a feria is active. This runs once on component mount.
+          const [view, setView] = React.useState(() => activeFeriaConfig ? 'report' : 'config');
+          const [showHistoricalReportModal, setShowHistoricalReportModal] = React.useState(false);
+          const [selectedHistoricalFeria, setSelectedHistoricalFeria] = React.useState(null);
+
+          // Use a ref to track the previous state of activeFeriaConfig to detect fundamental changes
+          const prevActiveFeriaConfigRef = React.useRef(activeFeriaConfig);
+
+          React.useEffect(() => {
+              const prevConfigExists = !!prevActiveFeriaConfigRef.current;
+              const currentConfigExists = !!activeFeriaConfig;
+
+              // Only update 'view' if the *existence* of activeFeriaConfig has changed
+              // (e.g., a feria was activated or archived).
+              // This prevents constant resets if other state updates cause re-renders of activeFeriaConfig,
+              // and allows user-initiated tab changes to persist.
+              if (prevConfigExists !== currentConfigExists) {
+                  if (currentConfigExists) {
+                      setView('report'); // Feria became active, default to 'report'
+                  } else {
+                      setView('config'); // Feria became inactive, default to 'config'
+                  }
+              }
+              // Update the ref for the next render cycle
+              prevActiveFeriaConfigRef.current = activeFeriaConfig;
+          }, [activeFeriaConfig]); // Re-run this effect only when activeFeriaConfig object itself changes
+
+          const setViewWithSound = (v) => { audioService.playClick(); setView(v); };
+
+          return (
+            <div className="min-h-screen bg-lightbg dark:bg-darkbg text-textdark dark:text-textlight">
+              <nav className="glass sticky top-0 z-30 shadow-sm border-b border-gray-200 dark:border-gray-800">
+                  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                      <div className="flex justify-between h-16 items-center">
+                          <span className="text-2xl font-bold text-primary tracking-tight">ADMIN<span className="text-gray-500 text-lg font-normal">PANEL</span></span>
+                          <div className="hidden md:flex space-x-2">
+                               <button onClick={() => setViewWithSound('config')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'config' ? 'bg-primary text-white shadow-lg shadow-emerald-500/30' : 'text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Configurar</button>
+                               <button onClick={() => setViewWithSound('report')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'report' ? 'bg-primary text-white shadow-lg shadow-emerald-500/30' : 'text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Reporte Activo</button>
+                               <button onClick={() => setViewWithSound('history')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'history' ? 'bg-primary text-white shadow-lg shadow-emerald-500/30' : 'text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Historial</button>
+                          </div>
+                          <button onClick={() => { audioService.playClick(); onLogout(); }} className="text-accent hover:bg-red-50 dark:hover:bg-red-900/20 font-bold text-sm border-2 border-accent rounded-lg px-4 py-1.5 transition-colors">SALIR</button>
+                      </div>
+                  </div>
+                  <div className="md:hidden flex border-t border-gray-200 dark:border-gray-700">
+                      <button onClick={() => setViewWithSound('config')} className={`flex-1 py-3 text-center text-xs font-bold uppercase tracking-wide transition-colors ${view === 'config' ? 'text-primary border-b-2 border-primary bg-gray-50 dark:bg-gray-800' : 'text-gray-500'}`}>Config</button>
+                      <button onClick={() => setViewWithSound('report')} className={`flex-1 py-3 text-center text-xs font-bold uppercase tracking-wide transition-colors ${view === 'report' ? 'text-primary border-b-2 border-primary bg-gray-50 dark:bg-gray-800' : 'text-gray-500'}`}>Reporte</button>
+                      <button onClick={() => setViewWithSound('history')} className={`flex-1 py-3 text-center text-xs font-bold uppercase tracking-wide transition-colors ${view === 'history' ? 'text-primary border-b-2 border-primary bg-gray-50 dark:bg-gray-800' : 'text-gray-500'}`}>Historial</button>
+                  </div>
+              </nav>
+
+              <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                <div className="animate-slide-up">
+                    {view === 'config' && <FeriaConfigForm activeFeriaConfig={activeFeriaConfig} onSave={onUpdateFeriaConfig} onFinalizeFeria={onFinalizeFeria} />}
+                    {view === 'report' && <SalesReport activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} onFinalizeFeria={onFinalizeFeria} goToConfig={() => setViewWithSound('config')} />}
+                    {view === 'history' && <FeriaHistoryList activeFeriaConfig={activeFeriaConfig} feriaHistory={feriaHistory} onActivateFeria={onActivateHistoricalFeria} onShowReport={(f) => { audioService.playClick(); setSelectedHistoricalFeria(f); setShowHistoricalReportModal(true); }} onDeleteFeria={(id) => { audioService.playClick(); if(window.confirm('Eliminar?')) onDeleteHistoricalFeria(id); }} />}
+                </div>
+              </main>
+              
+              {showHistoricalReportModal && selectedHistoricalFeria && <HistoricalFeriaReportModal feria={selectedHistoricalFeria} onClose={() => { audioService.playClick(); setShowHistoricalReportModal(false); }} />}
+            </div>
+          );
+      };
+
+      const FeriaConfigForm = ({ activeFeriaConfig, onSave, onFinalizeFeria }) => {
+          // Removed explicit TypeScript type for FeriaConfig in useState
+          const [formData, setFormData] = React.useState({ 
+              nombreFeria: '', 
+              fechaInicio: '', 
+              fechaFin: '', 
+              valorPinta: 0, 
+              valorLitro: 0,
+              wastePerPint: 0,
+              stock: BEER_STYLES.reduce((acc, style) => ({...acc, [style]: 0}), {})
+          });
+          const [feedback, setFeedback] = React.useState({ msg: null, isError: false });
+          
+          React.useEffect(() => {
+              if (activeFeriaConfig) {
+                  // Merge defaults for new fields if they don't exist in saved data
+                  const stock = activeFeriaConfig.stock || BEER_STYLES.reduce((acc, style) => ({...acc, [style]: 0}), {});
+                  setFormData({ 
+                      ...activeFeriaConfig,
+                      wastePerPint: activeFeriaConfig.wastePerPint || 0,
+                      stock: stock
+                  });
+              } else {
+                  // Reset form data if no active fair, preparing for a new one
+                  setFormData({ 
+                      nombreFeria: '', 
+                      fechaInicio: '', 
+                      fechaFin: '', 
+                      valorPinta: 0, 
+                      valorLitro: 0,
+                      wastePerPint: 0,
+                      stock: BEER_STYLES.reduce((acc, style) => ({...acc, [style]: 0}), {})
+                  });
+              }
+          }, [activeFeriaConfig]);
+
+          const handleSubmit = async (e) => { // Removed explicit type React.FormEvent
+              e.preventDefault();
+              audioService.playClick();
+              try {
+                  await onSave(formData);
+                  setFeedback({ msg: 'Guardado correctamente.', isError: false });
+              } catch(e) { setFeedback({ msg: 'Error al guardar.', isError: true }); }
+              setTimeout(() => setFeedback({msg: null, isError: false}), 3000);
+          };
+
+          const handleStockChange = (style, value) => { // Removed explicit type string
+              setFormData(prev => ({
+                  ...prev,
+                  stock: { ...prev.stock, [style]: parseFloat(value) || 0 }
+              }));
+          };
+
+          return (
+              <div className="glass shadow-xl rounded-2xl p-8 border border-white/20">
+                  <h3 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white flex items-center gap-2"><span className="w-2 h-8 bg-primary rounded-full"></span>Configuración de Feria</h3>
+                  {!activeFeriaConfig && (
+                      <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 p-4 rounded-xl mb-6 flex items-center gap-3 animate-fade-in">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          <p className="font-semibold text-base">¡Bienvenido Administrador! No hay una feria activa. Por favor, crea una nueva configuración.</p>
+                      </div>
+                  )}
+                  {feedback.msg && <div className={`p-4 mb-4 rounded-xl font-bold animate-pulse ${feedback.isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{feedback.msg}</div>}
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                      
+                      {/* Stock Management Section - FIRST as requested */}
+                      <div className="bg-gray-100 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700">
+                          <h4 className="text-xl font-bold mb-4 text-primary uppercase tracking-wider flex items-center gap-2">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                              STOCK INICIAL LITROS
+                          </h4>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                              {BEER_STYLES.map(style => (
+                                  <div key={style}>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{style}</label>
+                                      <input 
+                                          type="number" 
+                                          step="0.1" 
+                                          className="w-full p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-center font-mono font-bold"
+                                          value={formData.stock[style] || 0}
+                                          onChange={(e) => handleStockChange(style, e.target.value)}
+                                      />
+                                  </div>
+                              ))}
+                          </div>
+
+                          <div className="border-t border-gray-300 dark:border-gray-600 pt-4">
+                              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">
+                                  DESPERDICIO POR PINTA en ML
+                              </label>
+                              <p className="text-xs text-gray-500 mb-2">Una pinta carga unos 473 ml. El valor que ingrese se sumara como desperdicio por pinta.</p>
+                              <input 
+                                  type="number" 
+                                  step="1" 
+                                  className="w-full md:w-1/2 p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg font-mono font-bold"
+                                  value={formData.wastePerPint}
+                                  onChange={(e) => setFormData({...formData, wastePerPint: parseFloat(e.target.value) || 0})}
+                              />
+                          </div>
+                      </div>
+
+                      <div className="border-t border-white/20 pt-4"></div>
+
+                      {/* General Config */}
+                      <div>
+                          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Nombre del Evento</label>
+                          <input type="text" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-primary/20 focus:border-primary text-dark dark:text-white transition-all" value={formData.nombreFeria} onChange={e => setFormData({...formData, nombreFeria: e.target.value})} />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Inicio</label><input type="date" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white" value={formData.fechaInicio} onChange={e => setFormData({...formData, fechaInicio: e.target.value})} /></div>
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Fin</label><input type="date" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white" value={formData.fechaFin} onChange={e => setFormData({...formData, fechaFin: e.target.value})} /></div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Valor Pinta ($)</label><input type="number" step="1" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white text-2xl font-mono font-bold" value={formData.valorPinta} onChange={e => setFormData({...formData, valorPinta: Math.round(parseFloat(e.target.value) || 0)})} /></div>
+                          <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">Valor Litro ($)</label><input type="number" step="1" onFocus={() => audioService.playClick()} required className="w-full p-4 bg-gray-50/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-600 rounded-xl dark:text-white text-2xl font-mono font-bold" value={formData.valorLitro} onChange={e => setFormData({...formData, valorLitro: Math.round(parseFloat(e.target.value) || 0)})} /></div>
+                      </div>
+
+                      <div className="pt-6 flex flex-col md:flex-row gap-4">
+                          <button type="submit" className="btn-3d flex-1 py-4 px-6 bg-gradient-to-r from-primary to-emerald-600 text-white rounded-xl font-bold shadow-3d-primary active:shadow-3d-primary-active uppercase tracking-wider">GUARDAR CAMBIOS</button>
+                          {activeFeriaConfig && <button type="button" onClick={() => { audioService.playClick(); onFinalizeFeria(); }} className="flex-1 py-4 px-6 bg-surfaceDark dark:bg-black border border-gray-600 text-white rounded-xl font-bold hover:bg-gray-800 transition uppercase tracking-wider">ARCHIVAR FERIA ACTUAL</button>}
+                      </div>
+                  </form>
+              </div>
+          );
+      };
+
+      const SalesReport = ({ activeFeriaConfig, activeSales, onFinalizeFeria, goToConfig }) => {
+          if (!activeFeriaConfig) {
+            return (
+                <div className="glass shadow-xl rounded-2xl p-8 border border-white/20 flex flex-col items-center justify-center text-center space-y-6 min-h-[400px]">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-gray-400 dark:text-gray-600 opacity-70 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 17v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <h3 className="text-3xl font-bold text-gray-700 dark:text-white">¡Ups! No hay feria activa.</h3>
+                    <p className="text-lg text-gray-500 dark:text-gray-400 max-w-md">Para comenzar a ver los reportes de ventas, primero debes configurar una nueva feria en la sección de configuración.</p>
+                    <button 
+                        onClick={() => { audioService.playClick(); goToConfig(); }} 
+                        className="btn-3d py-3 px-8 bg-gradient-to-r from-primary to-emerald-600 text-white rounded-xl font-bold shadow-3d-primary active:shadow-3d-primary-active transition transform hover:-translate-y-1"
+                    >
+                        Ir a Configurar Feria
+                    </button>
+                </div>
+            );
+          }
+          const report = calculateReportSummary(activeFeriaConfig, activeSales);
+          
+          const handleShare = () => {
+               audioService.playClick();
+               const message = `*REPORTE: ${activeFeriaConfig.nombreFeria}*\n` +
+                               `💰 *Total: $${report.montoTotalGeneral.toLocaleString()}*\n` +
+                               `🍺 Volumen: ${report.totalPintas} P / ${report.totalLitros} L\n` +
+                               `----------------\n` +
+                               `💳 Digital: $${report.montoTotalDigital.toLocaleString()}\n` +
+                               `💵 Efectivo: $${report.montoTotalBillete.toLocaleString()}`;
+               window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+          };
+
+          return (
+              <div className="glass shadow-xl rounded-2xl p-8 border border-white/20 space-y-6">
+                  <div className="border-b border-gray-200 dark:border-gray-700 pb-6">
+                      <h3 className="text-3xl font-bold text-primary mb-2">{activeFeriaConfig.nombreFeria}</h3>
+                      <div className="flex justify-between items-end">
+                          <p className="text-gray-500 font-medium">REPORTE FERIA ACTIVA</p>
+                          <div className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                              <p className="text-xs text-gray-500 font-bold tracking-widest uppercase">{report.totalPintas} PINTAS • {report.totalLitros} LITROS</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Financial Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/30 dark:to-gray-800 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800 shadow-sm hover:shadow-md transition-shadow">
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold uppercase text-xs tracking-wider">Recaudación Total</span>
+                          <div className="text-4xl font-black text-gray-800 dark:text-white mt-2 tracking-tight">${report.montoTotalGeneral.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/30 dark:to-gray-800 p-6 rounded-2xl border border-blue-100 dark:border-blue-800 shadow-sm hover:shadow-md transition-shadow">
+                           <span className="text-blue-600 dark:text-blue-400 font-bold uppercase text-xs tracking-wider">Ventas Digitales</span>
+                           <div className="text-3xl font-bold text-gray-800 dark:text-white mt-2 tracking-tight">${report.montoTotalDigital.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-gray-800 p-6 rounded-2xl border border-amber-100 dark:border-amber-800 shadow-sm hover:shadow-md transition-shadow">
+                           <span className="text-amber-600 dark:text-amber-400 font-bold uppercase text-xs tracking-wider">Ventas Efectivo</span>
+                           <div className="text-3xl font-bold text-gray-800 dark:text-white mt-2 tracking-tight">${report.montoTotalBillete.toLocaleString()}</div>
+                      </div>
+                  </div>
+
+                  {/* Stock Visualization */}
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700">
+                      <h4 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                          STOCK DE CERVEZAS (LITROS)
+                      </h4>
+                      <div className="space-y-4">
+                          {BEER_STYLES.map(style => {
+                              const initialStock = activeFeriaConfig.stock ? (activeFeriaConfig.stock[style] || 0) : 0;
+                              const consumed = report.consumptionByStyle ? (report.consumptionByStyle[style] || 0) : 0;
+                              const remaining = Math.max(0, initialStock - consumed);
+                              const percent = initialStock > 0 ? (remaining / initialStock) * 100 : 0;
+                              
+                              return (
+                                  <div key={style}>
+                                      <div className="flex justify-between text-sm mb-1 font-bold">
+                                          <span className="text-gray-700 dark:text-gray-300">{style}</span>
+                                          <span className="text-gray-500">{remaining.toFixed(1)}L / {initialStock}L <span className="text-xs ml-1 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">{Math.round(percent)}%</span></span>
+                                      </div>
+                                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                                          <div 
+                                              className={`h-3 rounded-full transition-all duration-1000 ease-out ${percent < 20 ? 'bg-red-500' : (percent < 50 ? 'bg-yellow-500' : 'bg-green-500')}`} 
+                                              style={{ width: `${percent}%` }}
+                                          ></div>
+                                      </div>
+                                  </div>
+                              )
+                          })}
+                      </div>
+                  </div>
+
+                  <div className="flex gap-4 pt-4">
+                      <button onClick={handleShare} className="flex-1 btn-3d bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-500/30 flex items-center justify-center gap-2">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                          WhatsApp
+                      </button>
+                      <button onClick={() => { audioService.playClick(); onFinalizeFeria(); }} className="flex-1 btn-3d bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold py-4 rounded-xl hover:bg-red-100 hover:text-red-600 transition-colors">Cerrar Feria</button>
+                  </div>
+              </div>
+          );
+      };
+
+      const FeriaHistoryList = ({ activeFeriaConfig, feriaHistory, onActivateFeria, onShowReport, onDeleteFeria }) => {
+          return (
+              <div className="glass shadow-xl rounded-2xl p-8 border border-white/20 space-y-6">
+                  <h3 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white flex items-center gap-2"><span className="w-2 h-8 bg-primary rounded-full"></span>Historial de Ferias</h3>
+                  {feriaHistory.length === 0 ? (
+                      <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 p-4 rounded-xl flex items-center gap-3 animate-fade-in">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <p className="font-semibold text-base">No hay ferias archivadas todavía.</p>
+                      </div>
+                  ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {feriaHistory.map(feria => (
+                              <div key={feria.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-5 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow">
+                                  <h4 className="text-xl font-bold text-primary mb-2">{feria.config.nombreFeria}</h4>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Inicio: {new Date(feria.config.fechaInicio).toLocaleDateString()}</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Fin: {new Date(feria.config.fechaFin).toLocaleDateString()}</p>
+                                  <p className="text-sm text-gray-600 dark:text-gray-300 font-bold">Total: ${feria.reportSummary.montoTotalGeneral.toLocaleString()}</p>
+                                  {activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria && (
+                                      <p className="text-sm text-blue-500 font-bold mt-2">Feria activa actualmente.</p>
+                                  )}
+                                  <div className="mt-4 flex flex-col space-y-2">
+                                      <button onClick={() => onShowReport(feria)} className="w-full py-2 px-4 bg-primary text-white rounded-lg font-bold hover:bg-emerald-600 transition-colors">Ver Reporte</button>
+                                      <button onClick={() => onActivateFeria(feria)} disabled={activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria} className={`w-full py-2 px-4 rounded-lg font-bold transition-colors ${activeFeriaConfig && activeFeriaConfig.nombreFeria === feria.config.nombreFeria ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-secondary text-white hover:bg-amber-600'}`}>Activar</button>
+                                      <button onClick={() => onDeleteFeria(feria.id)} className="w-full py-2 px-4 bg-accent text-white rounded-lg font-bold hover:bg-red-600 transition-colors">Eliminar</button>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          );
+      };
+
+      const HistoricalFeriaReportModal = ({ feria, onClose }) => {
+          const report = calculateReportSummary(feria.config, feria.sales);
+          const { jsPDF } = window.jspdf;
+
+          const generatePdfReport = () => {
+            const doc = new jsPDF();
+            const startY = 20;
+            let currentY = startY;
+
+            doc.setFontSize(22);
+            doc.text(`Reporte de Feria: ${feria.config.nombreFeria}`, 14, currentY);
+            currentY += 10;
+            doc.setFontSize(12);
+            doc.text(`Archivada el: ${new Date(feria.archivedAt).toLocaleDateString()} ${new Date(feria.archivedAt).toLocaleTimeString()}`, 14, currentY);
+            currentY += 10;
+            doc.text(`Inicio: ${new Date(feria.config.fechaInicio).toLocaleDateString()} - Fin: ${new Date(feria.config.fechaFin).toLocaleDateString()}`, 14, currentY);
+            currentY += 15;
+
+            // Summary
+            doc.setFontSize(16);
+            doc.text("Resumen Financiero", 14, currentY);
+            currentY += 7;
+            doc.setFontSize(12);
+            doc.text(`Recaudación Total: $${report.montoTotalGeneral.toLocaleString()}`, 14, currentY);
+            currentY += 7;
+            doc.text(`Ventas Digitales: $${report.montoTotalDigital.toLocaleString()}`, 14, currentY);
+            currentY += 7;
+            doc.text(`Ventas Efectivo: $${report.montoTotalBillete.toLocaleString()}`, 14, currentY);
+            currentY += 7;
+            doc.text(`Total Pintas: ${report.totalPintas} P`, 14, currentY);
+            currentY += 7;
+            doc.text(`Total Litros: ${report.totalLitros} L`, 14, currentY);
+            currentY += 15;
+
+            // Stock
+            doc.setFontSize(16);
+            doc.text("Resumen de Stock (Litros)", 14, currentY);
+            currentY += 7;
+
+            const stockData = BEER_STYLES.map(style => {
+                const initial = feria.config.stock ? (feria.config.stock[style] || 0) : 0;
+                const consumed = report.consumptionByStyle ? (report.consumptionByStyle[style] || 0) : 0;
+                const remaining = Math.max(0, initial - consumed);
+                return [style, `${initial}L`, `${consumed.toFixed(1)}L`, `${remaining.toFixed(1)}L`];
+            });
+
+            doc.autoTable({
+                startY: currentY,
+                head: [['Estilo', 'Stock Inicial', 'Consumido', 'Restante']],
+                body: stockData,
+                styles: { fontSize: 10, cellPadding: 2 },
+                headStyles: { fillColor: [16, 185, 129], textColor: 255 }, // Primary color
+                margin: { left: 14, right: 14 },
+                didDrawPage: function(data) {
+                    currentY = data.cursor.y; // Update currentY after table
+                }
+            });
+            currentY = doc.autoTable.previous.finalY + 15; // Update currentY after table
+
+            // Sales list (optional, can be very long)
+            if (feria.sales && feria.sales.length > 0) {
+              doc.addPage();
+              currentY = startY;
+              doc.setFontSize(16);
+              doc.text("Detalle de Ventas", 14, currentY);
+              currentY += 7;
+
+              const salesDetail = feria.sales.map(sale => {
+                  const itemsSummary = sale.items ? sale.items.map(item => `${item.quantity} ${item.unit} ${item.style}`).join(', ') : `${sale.cantidadUnidades} ${sale.tipoUnidad}`;
+                  return [
+                      new Date(sale.fechaVenta).toLocaleString(),
+                      itemsSummary,
+                      `$${sale.montoTotal.toLocaleString()}`,
+                      sale.tipoPago,
+                      sale.usuarioVenta
+                  ];
+              });
+
+              doc.autoTable({
+                  startY: currentY,
+                  head: [['Fecha', 'Ítems', 'Monto', 'Pago', 'Usuario']],
+                  body: salesDetail,
+                  styles: { fontSize: 8, cellPadding: 1 },
+                  headStyles: { fillColor: [245, 158, 11], textColor: 255 }, // Secondary color
+                  margin: { left: 14, right: 14 },
+              });
+            }
+
+            doc.save(`reporte-${feria.config.nombreFeria}.pdf`);
+          };
+
+          return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4 overflow-y-auto">
+                  <div className="glass w-full max-w-3xl rounded-2xl p-6 md:p-8 border border-white/20 shadow-2xl animate-pop-in relative">
+                      <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 dark:text-gray-300 hover:text-accent transition-colors text-3xl font-bold">&times;</button>
+                      
+                      <h3 className="text-3xl font-bold text-primary mb-4 flex items-center gap-2"><span className="w-2 h-8 bg-primary rounded-full"></span>Reporte Histórico: {feria.config.nombreFeria}</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Archivada el: {new Date(feria.archivedAt).toLocaleDateString()} {new Date(feria.archivedAt).toLocaleTimeString()}</p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                          <div className="bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/30 dark:to-gray-800 p-5 rounded-xl border border-emerald-100 dark:border-emerald-800">
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold uppercase text-xs tracking-wider">Total Recaudado</span>
+                              <div className="text-3xl font-black text-gray-800 dark:text-white mt-1">${report.montoTotalGeneral.toLocaleString()}</div>
+                          </div>
+                          <div className="bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/30 dark:to-gray-800 p-5 rounded-xl border border-blue-100 dark:border-blue-800">
+                               <span className="text-blue-600 dark:text-blue-400 font-bold uppercase text-xs tracking-wider">Ventas Digitales</span>
+                               <div className="text-2xl font-bold text-gray-800 dark:text-white mt-1">${report.montoTotalDigital.toLocaleString()}</div>
+                          </div>
+                          <div className="bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-gray-800 p-5 rounded-xl border border-amber-100 dark:border-amber-800">
+                               <span className="text-amber-600 dark:text-amber-400 font-bold uppercase text-xs tracking-wider">Ventas Efectivo</span>
+                               <div className="text-2xl font-bold text-gray-800 dark:text-white mt-1">${report.montoTotalBillete.toLocaleString()}</div>
+                          </div>
+                      </div>
+
+                      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 mb-6">
+                          <h4 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                              STOCK DE CERVEZAS (LITROS)
+                          </h4>
+                          <div className="space-y-4">
+                              {BEER_STYLES.map(style => {
+                                  const initialStock = feria.config.stock ? (feria.config.stock[style] || 0) : 0;
+                                  const consumed = report.consumptionByStyle ? (report.consumptionByStyle[style] || 0) : 0;
+                                  const remaining = Math.max(0, initialStock - consumed);
+                                  const percent = initialStock > 0 ? (remaining / initialStock) * 100 : 0;
+                                  
+                                  return (
+                                      <div key={style}>
+                                          <div className="flex justify-between text-sm mb-1 font-bold">
+                                              <span className="text-gray-700 dark:text-gray-300">{style}</span>
+                                              <span className="text-gray-500">{remaining.toFixed(1)}L / {initialStock}L <span className="text-xs ml-1 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">{Math.round(percent)}%</span></span>
+                                          </div>
+                                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                                              <div 
+                                                  className={`h-3 rounded-full transition-all duration-1000 ease-out ${percent < 20 ? 'bg-red-500' : (percent < 50 ? 'bg-yellow-500' : 'bg-green-500')}`} 
+                                                  style={{ width: `${percent}%` }}
+                                              ></div>
+                                          </div>
+                                      </div>
+                                  )
+                              })}
+                          </div>
+                      </div>
+
+                      <div className="flex gap-4 pt-4">
+                          <button onClick={() => { audioService.playClick(); generatePdfReport(); }} className="flex-1 btn-3d bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zm4 11H7v-2h10v2zm0-4H7v-2h10v2z"/></svg>
+                              Descargar Reporte (PDF)
+                          </button>
+                          <button onClick={onClose} className="flex-1 btn-3d bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold py-4 rounded-xl hover:bg-red-100 hover:text-red-600 transition-colors">Cerrar</button>
+                      </div>
+                  </div>
+              </div>
+          );
+      };
+
+      // --- Main App Component (from index.tsx) ---
+      function App() {
+        const [userRole, setUserRole] = React.useState(null); // Removed explicit type string | null
+        const [activeFeriaConfig, setActiveFeriaConfig] = React.useState(null); // Removed explicit type FeriaConfig | null
+        const [activeSales, setActiveSales] = React.useState([]); // Removed explicit type Sale[]
+        const [feriaHistory, setFeriaHistory] = React.useState([]); // Removed explicit type FeriaHistory[]
+        const [loading, setLoading] = React.useState(true);
+
+        React.useEffect(() => {
+            const unsubscribe = auth.onAuthStateChanged(async (user) => { // Removed explicit type any
+                if (user) {
+                    const idTokenResult = await user.getIdTokenResult();
+                    setUserRole(idTokenResult.claims.role || null);
+                } else {
+                    setUserRole(null); setActiveFeriaConfig(null); setActiveSales([]); setFeriaHistory([]);
+                }
+                setLoading(false);
+            });
+            return () => unsubscribe();
+        }, []);
+
+        React.useEffect(() => {
+            if (!userRole) {
+                return;
+            }
+            const u1 = db.collection('settings').doc('activeFeria').onSnapshot(doc => {
+                const config = doc.exists && doc.data().nombreFeria ? doc.data() : null;
+                setActiveFeriaConfig(config);
+            });
+            const u2 = db.collection('activeSales').onSnapshot(snap => {
+                const sales = snap.docs.map(d => ({id:d.id, ...d.data()}));
+                setActiveSales(sales);
+            });
+            let u3 = () => {};
+            if (userRole === ADMIN_ROLE) {
+                u3 = db.collection('feriaHistory').orderBy('archivedAt', 'desc').onSnapshot(snap => {
+                    const history = snap.docs.map(d => ({id:d.id, ...d.data()}));
+                    setFeriaHistory(history);
+                });
+            }
+            return () => { 
+                u1(); u2(); u3(); 
+            };
+        }, [userRole]);
+
+        if (loading) return <div className="min-h-screen w-full flex items-center justify-center bg-darkbg"><div className="spinner border-t-4 border-primary w-12 h-12"></div></div>;
+
+        return (
+            <React.Fragment>
+                {!userRole ? <AuthScreen onLogin={setUserRole} /> :
+                 userRole === ADMIN_ROLE ? 
+                    <AdminDashboard activeFeriaConfig={activeFeriaConfig} activeSales={activeSales} feriaHistory={feriaHistory} onUpdateFeriaConfig={apiService.saveActiveFeriaConfig} onFinalizeFeria={() => apiService.archiveCurrentFeria({config: activeFeriaConfig, sales: activeSales, reportSummary: calculateReportSummary(activeFeriaConfig, activeSales), archivedAt: new Date().toISOString()})} onActivateHistoricalFeria={apiService.activateHistoricalFeria} onDeleteHistoricalFeria={apiService.deleteHistoricalFeria} onLogout={apiService.logout} /> :
+                    <SalesTPV activeFeriaConfig={activeFeriaConfig} onAddSale={apiService.addSale} onLogout={apiService.logout} />
+                }
+            </React.Fragment>
+        );
+      }
+
+      // --- ReactDOM Render (from index.tsx) ---
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error("Could not find root element to mount to");
+      }
+
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      );
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
