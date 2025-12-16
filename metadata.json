@@ -1,5 +1,5 @@
 {
-  "name": "para que se vea Reparaciones LOLA VENTAS",
-  "description": "An intuitive React-based Point of Sale (POS) and administration application for managing fair sales, tracking stock, and generating reports.",
+  "name": "PAC-VENTAS",
+  "description": "A light single-page application for event sales registration, calculating quantities and totals, with admin and sales user roles, active and historical sales reporting, and PDF download capabilities.",
   "requestFramePermissions": []
 }
