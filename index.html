@@ -234,7 +234,7 @@
       const ENC_TRIGGER_ADMIN = 'cmVnaXM='; 
       const ENC_TRIGGER_SALES = 'bG9s';
 
-      const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7243f6b59b63004079/lola.svg';
+      const LOLA_SVG_URL = 'https://raw.githubusercontent.com/LOLAPALUPULO/LolaVentas/034fef64afa32a2249a8be7284f6b59b63004079/lola.svg';
 
       // --- Audio Service using Tone.js (from services/audioService.ts) ---
       const audioService = {
@@ -1009,30 +1009,32 @@
       };
 
       const AdminDashboard = ({ activeFeriaConfig, activeSales, feriaHistory, onUpdateFeriaConfig, onFinalizeFeria, onActivateHistoricalFeria, onDeleteHistoricalFeria, onLogout }) => {
-          const [view, setView] = React.useState(activeFeriaConfig ? 'report' : 'config');
+          // Initialize view based on whether a feria is active. This runs once on component mount.
+          const [view, setView] = React.useState(() => activeFeriaConfig ? 'report' : 'config');
           const [showHistoricalReportModal, setShowHistoricalReportModal] = React.useState(false);
           const [selectedHistoricalFeria, setSelectedHistoricalFeria] = React.useState(null);
 
-          // New useEffect to automatically switch view based on activeFeriaConfig presence
-          React.useEffect(() => {
-              console.log("AdminDashboard useEffect triggered.");
-              console.log("  Current activeFeriaConfig:", activeFeriaConfig ? activeFeriaConfig.nombreFeria : "None");
-              console.log("  Current view state:", view);
+          // Use a ref to track the previous state of activeFeriaConfig to detect fundamental changes
+          const prevActiveFeriaConfigRef = React.useRef(activeFeriaConfig);
 
-              if (activeFeriaConfig) {
-                  // If there's an active feria, always default to the report view
-                  if (view !== 'report') {
-                      console.log("  AdminDashboard: ActiveFeriaConfig detected, switching view to 'report'.");
-                      setView('report');
-                  }
-              } else {
-                  // If there's no active feria, always default to the config view
-                  if (view !== 'config') {
-                      console.log("  AdminDashboard: No ActiveFeriaConfig, switching view to 'config'.");
-                      setView('config');
+          React.useEffect(() => {
+              const prevConfigExists = !!prevActiveFeriaConfigRef.current;
+              const currentConfigExists = !!activeFeriaConfig;
+
+              // Only update 'view' if the *existence* of activeFeriaConfig has changed
+              // (e.g., a feria was activated or archived).
+              // This prevents constant resets if other state updates cause re-renders of activeFeriaConfig,
+              // and allows user-initiated tab changes to persist.
+              if (prevConfigExists !== currentConfigExists) {
+                  if (currentConfigExists) {
+                      setView('report'); // Feria became active, default to 'report'
+                  } else {
+                      setView('config'); // Feria became inactive, default to 'config'
                   }
               }
-          }, [activeFeriaConfig, view]); // Dependency on activeFeriaConfig and view to prevent unnecessary re-renders
+              // Update the ref for the next render cycle
+              prevActiveFeriaConfigRef.current = activeFeriaConfig;
+          }, [activeFeriaConfig]); // Re-run this effect only when activeFeriaConfig object itself changes
 
           const setViewWithSound = (v) => { audioService.playClick(); setView(v); };
 
@@ -1296,184 +1298,6 @@
           );
       };
 
-      const FeriaHistoryList = ({ feriaHistory, onActivateFeria, onShowReport, onDeleteFeria }) => {
-          return (
-              <div className="space-y-4">
-                  {feriaHistory.map((feria) => ( // Removed explicit type any
-                      <div key={feria.id} className="glass p-6 rounded-2xl shadow-sm hover:shadow-lg transition-all border border-transparent hover:border-primary/30 flex flex-col md:flex-row justify-between items-center gap-4 group">
-                          <div className="flex-1">
-                              <h4 className="text-xl font-bold text-gray-800 dark:text-white group-hover:text-primary transition-colors">{feria.config.nombreFeria}</h4>
-                              <p className="text-sm text-gray-500 font-medium flex items-center gap-1">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                  {new Date(feria.archivedAt).toLocaleDateString()}
-                              </p>
-                          </div>
-                          <div className="text-right px-4 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg">
-                              <span className="block text-2xl font-black text-primary tracking-tight">${feria.reportSummary.montoTotalGeneral.toLocaleString()}</span>
-                          </div>
-                          <div className="flex gap-2">
-                              <button onClick={() => onShowReport(feria)} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-bold text-sm hover:bg-blue-100 transition-colors">Ver</button>
-                              <button onClick={() => onDeleteFeria(feria.id)} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg font-bold text-sm hover:bg-red-100 transition-colors">Borrar</button>
-                              <button 
-                                onClick={async () => { 
-                                    audioService.playClick(); 
-                                    if(window.confirm('Activar esta feria archivará la actual. Continuar?')) {
-                                        try {
-                                            await onActivateFeria(feria);
-                                        } catch (e) {
-                                            console.error(e);
-                                        }
-                                    }
-                                }} 
-                                className="px-4 py-2 bg-green-50 text-green-600 rounded-lg font-bold text-sm hover:bg-green-100 transition-colors"
-                              >
-                                Reactivar
-                              </button>
-                          </div>
-                      </div>
-                  ))}
-                  {feriaHistory.length === 0 && <p className="text-center text-gray-400 py-10 font-light italic">Sin historial disponible.</p>}
-              </div>
-          );
-      };
-
-      const HistoricalFeriaReportModal = ({ feria, onClose }) => { // Removed explicit type any
-        const report = calculateReportSummary(feria.config, feria.sales);
-        const { jsPDF } = window.jspdf;
-
-        const dailyStats = React.useMemo(() => {
-            const stats = {}; // Removed explicit type any
-            feria.sales.forEach((sale) => { // Removed explicit type Sale
-                const dateObj = new Date(sale.fechaVenta);
-                const dateKey = dateObj.toLocaleDateString();
-                
-                if (!stats[dateKey]) {
-                    stats[dateKey] = {
-                        date: dateKey,
-                        timestamp: dateObj.setHours(0,0,0,0),
-                        totalMoney: 0,
-                        totalDigital: 0,
-                        totalBillete: 0,
-                        totalPintas: 0,
-                        totalLitros: 0
-                    };
-                }
-                
-                stats[dateKey].totalMoney += sale.montoTotal;
-                if (sale.tipoPago === TipoPago.Digital) {
-                    stats[dateKey].totalDigital += sale.montoTotal;
-                } else {
-                    stats[dateKey].totalBillete += sale.montoTotal;
-                }
-                
-                // Simplified volume logic for history table
-                if (!sale.items || sale.items.length === 0) {
-                    if (sale.tipoUnidad === TipoUnidad.Pinta) stats[dateKey].totalPintas += sale.cantidadUnidades;
-                    else if (sale.tipoUnidad === TipoUnidad.Litro) stats[dateKey].totalLitros += sale.cantidadUnidades;
-                    else if (sale.tipoUnidad === TipoUnidad.Mixed) {
-                        stats[dateKey].totalPintas += sale.cantidadUnidades / 2;
-                        stats[dateKey].totalLitros += sale.cantidadUnidades / 2;
-                    }
-                } else {
-                    sale.items.forEach(item => {
-                        if(item.unit === TipoUnidad.Pinta) stats[dateKey].totalPintas += item.quantity;
-                        if(item.unit === TipoUnidad.Litro) stats[dateKey].totalLitros += item.quantity;
-                    });
-                }
-            });
-            return Object.values(stats).sort((a, b) => a.timestamp - b.timestamp); // Removed explicit type any
-        }, [feria.sales]);
-
-        const handleDownloadPdf = () => {
-            audioService.playClick();
-            const doc = new jsPDF();
-            doc.setFontSize(22); doc.setTextColor('#10B981'); doc.text(`${feria.config.nombreFeria}`, 14, 20);
-            doc.setFontSize(14); doc.setTextColor('#000'); doc.text(`Total: $${report.montoTotalGeneral.toLocaleString()}`, 14, 40);
-            doc.setFontSize(10); 
-            doc.text(`Digital: $${report.montoTotalDigital.toLocaleString()} | Billete: $${report.montoTotalBillete.toLocaleString()}`, 14, 48);
-            doc.text(`Volumen: ${report.totalPintas} P / ${report.totalLitros} L`, 14, 56);
-            
-            const rows = dailyStats.map((d) => [d.date, `$${d.totalMoney.toLocaleString()}`, `$${d.totalDigital.toLocaleString()}`, `$${d.totalBillete.toLocaleString()}`, Math.round(d.totalPintas), Math.round(d.totalLitros)]); // Removed explicit type any
-            
-            doc.autoTable({ 
-                startY: 65, 
-                head: [['Fecha', 'Total', '$ Dig', '$ Efe', 'P', 'L']], 
-                body: rows, 
-                theme: 'striped', 
-                headStyles: { fillColor: [16, 185, 129] },
-                styles: { fontSize: 8 }
-            });
-            doc.save(`Reporte_${feria.config.nombreFeria}.pdf`);
-        };
-
-        const handleShare = () => {
-             audioService.playClick();
-             const msg = `*HISTORICO: ${feria.config.nombreFeria}*\nTotal: $${report.montoTotalGeneral.toLocaleString()}\n(D: $${report.montoTotalDigital.toLocaleString()} / B: $${report.montoTotalBillete.toLocaleString()})`;
-             window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-        };
-
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-                <div className="bg-white dark:bg-surfaceDark w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-pop-in">
-                    <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800">
-                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white truncate">{feria.config.nombreFeria}</h2>
-                        <button onClick={onClose} className="text-gray-400 hover:text-red-500 text-4xl leading-none transition-colors">&times;</button>
-                    </div>
-                    <div className="p-8 overflow-y-auto flex-grow bg-lightbg dark:bg-darkbg">
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm text-center border-b-4 border-primary">
-                                <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">TOTAL</div>
-                                <div className="text-3xl font-black text-primary">${report.montoTotalGeneral.toLocaleString()}</div>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm text-center border-b-4 border-gray-400">
-                                <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">VOLUMEN</div>
-                                <div className="text-xl font-bold text-gray-700 dark:text-gray-300">{report.totalPintas}P / {report.totalLitros}L</div>
-                            </div>
-                        </div>
-                        
-                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-                             <div className="overflow-x-auto">
-                                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                                         <tr>
-                                             <th className="px-6 py-3">Fecha</th>
-                                             <th className="px-6 py-3 text-center">Cant.</th>
-                                             <th className="px-6 py-3 text-right">Total</th>
-                                         </tr>
-                                     </thead>
-                                     <tbody>
-                                         {dailyStats.map((day, i) => ( // Removed explicit type any
-                                             <tr key={i} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
-                                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                                                     {day.date}
-                                                     <div className="text-[10px] text-gray-400 uppercase font-bold mt-1">
-                                                        <span className="text-blue-500">D: ${day.totalDigital.toLocaleString()}</span> • <span className="text-green-500">E: ${day.totalBillete.toLocaleString()}</span>
-                                                     </div>
-                                                 </td>
-                                                 <td className="px-6 py-4 text-center">
-                                                     <div className="font-bold text-gray-700 dark:text-gray-300">
-                                                         {Math.round(day.totalPintas)} P / {Math.round(day.totalLitros)} L
-                                                     </div>
-                                                 </td>
-                                                 <td className="px-6 py-4 text-right font-black text-gray-900 dark:text-white">
-                                                     ${day.totalMoney.toLocaleString()}
-                                                 </td>
-                                             </tr>
-                                         ))}
-                                     </tbody>
-                                 </table>
-                             </div>
-                        </div>
-                    </div>
-                    <div className="p-6 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex gap-4">
-                        <button onClick={handleShare} className="btn-3d flex-1 py-4 bg-green-500 text-white rounded-xl font-bold hover:bg-green-600 shadow-3d-primary active:shadow-3d-primary-active">WhatsApp</button>
-                        <button onClick={handleDownloadPdf} className="btn-3d flex-1 py-4 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 shadow-3d-blue active:shadow-3d-blue-active">PDF</button>
-                    </div>
-                </div>
-            </div>
-        );
-      };
-
       // --- Main App Component (from index.tsx) ---
       function App() {
         const [userRole, setUserRole] = React.useState(null); // Removed explicit type string | null
@@ -1483,14 +1307,11 @@
         const [loading, setLoading] = React.useState(true);
 
         React.useEffect(() => {
-            console.log("App: onAuthStateChanged listener set up.");
             const unsubscribe = auth.onAuthStateChanged(async (user) => { // Removed explicit type any
                 if (user) {
-                    console.log("App: User logged in:", user.email);
                     const idTokenResult = await user.getIdTokenResult();
                     setUserRole(idTokenResult.claims.role || null);
                 } else {
-                    console.log("App: User logged out.");
                     setUserRole(null); setActiveFeriaConfig(null); setActiveSales([]); setFeriaHistory([]);
                 }
                 setLoading(false);
@@ -1500,30 +1321,24 @@
 
         React.useEffect(() => {
             if (!userRole) {
-                console.log("App: No user role, skipping Firestore listeners.");
                 return;
             }
-            console.log("App: Setting up Firestore listeners for role:", userRole);
             const u1 = db.collection('settings').doc('activeFeria').onSnapshot(doc => {
                 const config = doc.exists && doc.data().nombreFeria ? doc.data() : null;
-                console.log("App: ActiveFeriaConfig updated:", config ? config.nombreFeria : "None");
                 setActiveFeriaConfig(config);
             });
             const u2 = db.collection('activeSales').onSnapshot(snap => {
                 const sales = snap.docs.map(d => ({id:d.id, ...d.data()}));
-                console.log("App: ActiveSales updated. Count:", sales.length);
                 setActiveSales(sales);
             });
             let u3 = () => {};
             if (userRole === ADMIN_ROLE) {
                 u3 = db.collection('feriaHistory').orderBy('archivedAt', 'desc').onSnapshot(snap => {
                     const history = snap.docs.map(d => ({id:d.id, ...d.data()}));
-                    console.log("App: FeriaHistory updated. Count:", history.length);
                     setFeriaHistory(history);
                 });
             }
             return () => { 
-                console.log("App: Unsubscribing from Firestore listeners.");
                 u1(); u2(); u3(); 
             };
         }, [userRole]);

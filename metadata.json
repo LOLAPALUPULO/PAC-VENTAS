@@ -1,6 +1,5 @@
-
 {
-  "name": "TODA OK pero no carga LOLA VENTAS ",
+  "name": "TODA OK pero error en administrador",
   "description": "Sistema de gestión de ventas de cerveza con control de stock y reportes.",
   "requestFramePermissions": []
 }
